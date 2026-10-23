@@ -18,8 +18,14 @@ final class CatDropView: NSView {
     private var toastUntil: Date = .distantPast
     private var animationName = "idle"
     private var animationStarted = Date()
+    private var nextMeeting: Date?
+    private var lastMeetingCheck = Date.distantPast
+    private var busyUntil = Date.distantPast
+    private var dragAnimating = false
+    private var lastBehavior = Date.distantPast
+    private var trashJourneyStarted: Date?
     private var imageCache: [String: NSImage] = [:]
-    private let frames: [String: Int] = ["idle":2,"groom":8,"sleep":6,"walk":8,"stand":6,"carry":6,"throw":8,"happy":6]
+    private let frames: [String: Int] = ["idle":2,"groom":8,"sleep":6,"walk":8,"stand":6,"carry":6,"throw":8,"happy":6,"typing":8,"clock":6]
     private func setAnimation(_ name: String) {
         animationName = name
         animationStarted = Date()
@@ -65,12 +71,38 @@ final class CatDropView: NSView {
             }
             self.needsDisplay = true
         }
-        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 30, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.ticks += 1
-                if self.ticks % 150 == 0 { self.machine.idleActivity() }
+                if self.ticks % 150 == 0 { self.updateBehavior() }
                 self.needsDisplay = true
+            }
+        }
+    }
+    private func updateBehavior() {
+        guard !processing, !dragAnimating else { return }
+        let now = Date()
+        if now.timeIntervalSince(lastMeetingCheck) > 120 {
+            lastMeetingCheck = now
+            MeetingService.shared.upcoming { [weak self] events, _ in
+                guard let self else { return }
+                self.nextMeeting = events?.filter { $0.startDate > Date() }.map { $0.startDate }.min()
+                self.updateBehavior()
+            }
+        }
+        if now < busyUntil { return }
+        if let nextMeeting, nextMeeting.timeIntervalSince(now) > 0,
+           nextMeeting.timeIntervalSince(now) <= 7200 {
+            if animationName != "clock" { setAnimation("clock") }
+        } else if tasks.tasks.filter({ !$0.completed }).count >= 3 {
+            if animationName != "typing" { setAnimation("typing") }
+        } else if now.timeIntervalSince(lastBehavior) >= 14 {
+            lastBehavior = now
+            if tasks.tasks.contains(where: { !$0.completed }) {
+                setAnimation("typing")
+            } else {
+                setAnimation(Bool.random() ? "groom" : "sleep")
             }
         }
     }
@@ -91,7 +123,12 @@ final class CatDropView: NSView {
             let frame = Int(elapsed * fps) % count
             let key = String(format: "Cat_%@_%02d", animationName, frame)
             if let sprite = resource(key) ?? resource("Cat_idle_00") {
-                drawImage(sprite, in: bounds)
+                if let journey = trashJourneyStarted {
+                    let progress = min(1, max(0, Date().timeIntervalSince(journey) / 1.25))
+                    drawImage(sprite, in: bounds.offsetBy(dx: CGFloat(progress * 66), dy: CGFloat(-progress * 42)))
+                } else {
+                    drawImage(sprite, in: bounds)
+                }
             }
         } else if let image { drawImage(image, in: bounds) }
 
@@ -136,11 +173,19 @@ final class CatDropView: NSView {
         let now = NSEvent.mouseLocation
         let dx = now.x - start.x, dy = now.y - start.y
         if hypot(dx, dy) > 4 { didDrag = true }
-        if didDrag { window.setFrameOrigin(NSPoint(x: origin.x + dx, y: origin.y + dy)) }
+        if didDrag {
+            if !dragAnimating && !processing { dragAnimating = true; setAnimation("walk") }
+            window.setFrameOrigin(NSPoint(x: origin.x + dx, y: origin.y + dy))
+        }
     }
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         if !didDrag { showMenu(for: point) }
+        if dragAnimating {
+            dragAnimating = false
+            busyUntil = Date().addingTimeInterval(0.5)
+            setAnimation("idle")
+        }
         dragStart = nil
         origin = nil
         didDrag = false
@@ -287,7 +332,8 @@ final class CatDropView: NSView {
         setAnimation("stand")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
             guard let self, self.processing else { return }
-            self.setAnimation("carry")
+            self.setAnimation("walk")
+            self.trashJourneyStarted = Date()
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { [weak self] in
             guard let self, self.processing else { return }
@@ -304,6 +350,7 @@ final class CatDropView: NSView {
                 }
             }
             self.processing = false
+            self.trashJourneyStarted = nil
             if failures.isEmpty {
                 self.machine.transition(to: .happy, resetAfter: 2)
                 self.showToast("Moved to Trash")
