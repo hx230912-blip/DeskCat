@@ -16,6 +16,22 @@ final class CatDropView: NSView {
     private var trashCompletion: (() -> Void)?
     private var toast: String?
     private var toastUntil: Date = .distantPast
+    private var animationName = "idle"
+    private var animationStarted = Date()
+    private var imageCache: [String: NSImage] = [:]
+    private let frames: [String: Int] = ["idle":2,"groom":8,"sleep":6,"walk":8,"stand":6,"carry":6,"throw":8,"happy":6]
+    private func setAnimation(_ name: String) {
+        animationName = name
+        animationStarted = Date()
+        needsDisplay = true
+    }
+    private func resource(_ name: String) -> NSImage? {
+        if let cached = imageCache[name] { return cached }
+        guard let url = Bundle.module.url(forResource: name, withExtension: "png"),
+              let img = NSImage(contentsOf: url) else { return nil }
+        imageCache[name] = img
+        return img
+    }
 
     // Render in a fixed logical canvas; preserve transparency.
     private let catRect = NSRect(x: 98, y: 62, width: 78, height: 83)
@@ -34,7 +50,21 @@ final class CatDropView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL])
-        machine.onChange = { [weak self] _ in self?.needsDisplay = true }
+        machine.onChange = { [weak self] state in
+            guard let self else { return }
+            if !self.processing {
+                let name: String
+                switch state {
+                case .grooming: name = "groom"
+                case .sleeping: name = "sleep"
+                case .walking: name = "walk"
+                case .happy: name = "happy"
+                default: name = "idle"
+                }
+                self.setAnimation(name)
+            }
+            self.needsDisplay = true
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -53,35 +83,23 @@ final class CatDropView: NSView {
     }
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        guard let image else { return }
-        drawImage(image, in: bounds)
+        if let background = resource("DeskCatBackground") {
+            drawImage(background, in: bounds)
+            let count = frames[animationName] ?? 2
+            let elapsed = max(0, Date().timeIntervalSince(animationStarted))
+            let fps: Double = animationName == "sleep" ? 3 : (animationName == "groom" ? 7 : 10)
+            let frame = Int(elapsed * fps) % count
+            let key = String(format: "Cat_%@_%02d", animationName, frame)
+            if let sprite = resource(key) ?? resource("Cat_idle_00") {
+                drawImage(sprite, in: bounds)
+            }
+        } else if let image { drawImage(image, in: bounds) }
 
-        // Lightweight visual animation layers over the preserved reference artwork.
-        let phase = CGFloat(ticks % 30) / 30
-        switch machine.state {
-        case .sleeping:
-            drawGlyph("z", at: NSPoint(x: 150, y: 147 + phase * 8), color: .systemIndigo, size: 12)
-            if ticks % 45 < 20 { drawGlyph("z", at: NSPoint(x: 163, y: 157), color: .systemIndigo, size: 9) }
-        case .grooming:
-            let dx: CGFloat = ticks % 10 < 5 ? 0 : 3
-            drawGlyph("♥", at: NSPoint(x: 137 + dx, y: 135), color: .systemPink, size: 9)
-        case .walking, .carry:
-            let dx: CGFloat = CGFloat(ticks % 12) * 2
-            drawGlyph("▣", at: NSPoint(x: 165 + dx, y: 79), color: .white, size: 15)
-        case .happy:
-            drawGlyph("✦", at: NSPoint(x: 161, y: 143 + (ticks % 6 < 3 ? 2 : 0)), color: .systemYellow, size: 15)
-        case .alert:
-            drawGlyph("!", at: NSPoint(x: 218, y: 48), color: .systemYellow, size: 13)
-        case .error:
-            drawGlyph("!", at: NSPoint(x: 149, y: 149), color: .systemRed, size: 13)
-        default: break
-        }
         if let start = trashAnimationStart {
-            let t = min(1, Date().timeIntervalSince(start) / 1.0)
-            // Arc from cat to the floor bin. A paper icon travels over the static art.
-            let x = 148 + 67 * t
-            let y = 100 - 62 * t + 32 * sin(.pi * t)
-            drawGlyph("▤", at: NSPoint(x: x, y: y), color: .white, size: 18)
+            let t = min(1, Date().timeIntervalSince(start) / 0.85)
+            let x = 164 + 52 * t
+            let y = 106 - 74 * t + 30 * sin(.pi * t)
+            drawGlyph("▤", at: NSPoint(x: x, y: y), color: .white, size: 15)
             if t >= 1 {
                 trashAnimationStart = nil
                 let completion = trashCompletion
@@ -266,9 +284,16 @@ final class CatDropView: NSView {
             return false
         }
         processing = true
-        machine.transition(to: .carry)
-        // Complete the visual arc first; then move to Trash and report actual outcome.
-        trashAnimationStart = Date()
+        setAnimation("stand")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+            guard let self, self.processing else { return }
+            self.setAnimation("carry")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { [weak self] in
+            guard let self, self.processing else { return }
+            self.setAnimation("throw")
+            self.trashAnimationStart = Date()
+        }
         trashCompletion = { [weak self] in
             guard let self else { return }
             self.machine.transition(to: .throwing)
