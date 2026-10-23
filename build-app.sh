@@ -9,6 +9,11 @@ if ! command -v swift >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ ! -f "$ROOT/Sources/DeskCat/Resources/DeskCatScene.png" ]]; then
+  echo "ERROR: Missing DeskCatScene.png"
+  echo "Copy approved art into Sources/DeskCat/Resources/DeskCatScene.png"
+  exit 1
+fi
 echo "Building DeskCat for this Mac..."
 swift build -c release
 
@@ -24,6 +29,12 @@ rm -rf "$STAGING"
 mkdir -p "$STAGING/Contents/MacOS" "$STAGING/Contents/Resources"
 cp "$BINARY" "$STAGING/Contents/MacOS/DeskCat"
 chmod 755 "$STAGING/Contents/MacOS/DeskCat"
+RESOURCE_BUNDLE="$ROOT/.build/release/DeskCat_DeskCat.bundle"
+if [[ ! -d "$RESOURCE_BUNDLE" ]]; then
+  echo "ERROR: Missing resource bundle $RESOURCE_BUNDLE"
+  exit 1
+fi
+cp -R "$RESOURCE_BUNDLE" "$STAGING/Contents/Resources/"
 
 cat > "$STAGING/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -35,11 +46,12 @@ cat > "$STAGING/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIdentifier</key><string>io.github.hx230912-blip.DeskCat</string>
   <key>CFBundleExecutable</key><string>DeskCat</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>0.4.0</string>
+  <key>CFBundleVersion</key><string>4</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSCalendarsUsageDescription</key><string>DeskCat displays upcoming meetings with permission.</string>
 </dict>
 </plist>
 PLIST
