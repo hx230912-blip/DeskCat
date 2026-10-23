@@ -6,6 +6,6 @@ let package = Package(
     platforms: [.macOS(.v13)],
     products: [.executable(name: "DeskCat", targets: ["DeskCat"])],
     targets: [
-        .executableTarget(name: "DeskCat", path: "Sources/DeskCat")
+        .executableTarget(name: "DeskCat", path: "Sources/DeskCat", resources: [.process("Resources")])
     ]
 )
