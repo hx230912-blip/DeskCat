@@ -4,9 +4,7 @@ import SwiftUI
 @main
 struct DeskCatApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
-    var body: some Scene {
-        Settings { Text("DeskCat · Pixel prototype").padding() }
-    }
+    var body: some Scene { Settings { Text("DeskCat").padding() } }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -16,15 +14,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Show DeskCat", action: #selector(showCat), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Reset position", action: #selector(resetPosition), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Quit DeskCat", action: #selector(quit), keyEquivalent: "q"))
-        for item in menu.items { item.target = self }
+        for (title, selector) in [
+            ("Show DeskCat", #selector(showCat)),
+            ("Reset position", #selector(resetPosition)),
+            ("Quit DeskCat", #selector(quit))
+        ] {
+            let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem?.button?.title = "🐈"
         statusItem?.menu = menu
 
-        let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 290, height: 185),
+        let size = NSSize(width: 270, height: 180)
+        let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                             styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
         panel.isOpaque = false
@@ -32,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panel.hasShadow = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = CatDropView(frame: NSRect(x: 0, y: 0, width: 290, height: 185))
+        panel.contentView = CatDropView(frame: NSRect(origin: .zero, size: size))
         self.panel = panel
         if let x = UserDefaults.standard.object(forKey: "deskcat.x") as? Double,
            let y = UserDefaults.standard.object(forKey: "deskcat.y") as? Double {
