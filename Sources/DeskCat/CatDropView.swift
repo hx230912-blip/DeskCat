@@ -1,176 +1,221 @@
 import AppKit
 
-/// Pixel-art desk, cat and trash. Entire illustration is rendered locally, without emoji or image assets.
+/// Compact transparent pixel workstation. Drag anywhere except the Trash drop target
+/// to reposition; clicking the cat (without moving) opens quick actions.
 @MainActor
 final class CatDropView: NSView {
     private let trashService = TrashService()
     private let machine = CatStateMachine()
-    private var isProcessing = false
-    private var frameIndex = 0
     private var timer: Timer?
-    private var dragOrigin: NSPoint?
-    private var message = ""
-    private var messageUntil = Date.distantPast
+    private var tick = 0
+    private var dragStartScreen: NSPoint?
+    private var windowStart: NSPoint?
+    private var dragged = false
+    private var isProcessing = false
 
-    private let catRect = NSRect(x: 44, y: 39, width: 108, height: 116)
-    private let binRect = NSRect(x: 224, y: 42, width: 49, height: 64)
-    private let deskRect = NSRect(x: 22, y: 15, width: 185, height: 43)
+    private let catHit = NSRect(x: 124, y: 61, width: 75, height: 93)
+    private let binHit = NSRect(x: 207, y: 8, width: 49, height: 59)
+    override var isFlipped: Bool { false }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL])
         machine.onChange = { [weak self] _ in self?.needsDisplay = true }
-        timer = Timer.scheduledTimer(withTimeInterval: 0.14, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        timer = Timer.scheduledTimer(withTimeInterval: 0.20, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
                 guard let self else { return }
-                self.frameIndex += 1
+                self.tick += 1
                 self.needsDisplay = true
             }
         }
     }
-
     required init?(coder: NSCoder) { fatalError("init(coder:) not implemented") }
     deinit { timer?.invalidate() }
-    override var isFlipped: Bool { false }
 
-    private func block(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ color: NSColor) {
+    private let outline = NSColor(calibratedWhite: 0.12, alpha: 1)
+    private let cream = NSColor(calibratedRed: 0.99, green: 0.96, blue: 0.86, alpha: 1)
+    private let ginger = NSColor(calibratedRed: 0.96, green: 0.64, blue: 0.35, alpha: 1)
+    private let grey = NSColor(calibratedRed: 0.43, green: 0.44, blue: 0.47, alpha: 1)
+    private let wood = NSColor(calibratedRed: 0.83, green: 0.59, blue: 0.37, alpha: 1)
+
+    private func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ color: NSColor) {
         color.setFill()
         NSRect(x: x, y: y, width: w, height: h).fill()
+    }
+    private func poly(_ points: [NSPoint], _ color: NSColor) {
+        guard let first = points.first else { return }
+        let p = NSBezierPath()
+        p.move(to: first)
+        for point in points.dropFirst() { p.line(to: point) }
+        p.close()
+        color.setFill()
+        p.fill()
+    }
+    private func shape(_ x: CGFloat, _ y: CGFloat, _ pixels: [String], _ scale: CGFloat,
+                       _ palette: [Character: NSColor]) {
+        for (row, line) in pixels.enumerated() {
+            for (col, char) in line.enumerated() {
+                if let color = palette[char] {
+                    rect(x + CGFloat(col) * scale,
+                         y + CGFloat(pixels.count - row - 1) * scale,
+                         scale, scale, color)
+                }
+            }
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        let ink = NSColor(calibratedRed: 0.17, green: 0.105, blue: 0.12, alpha: 1)
-        let orange = NSColor(calibratedRed: 0.92, green: 0.56, blue: 0.28, alpha: 1)
-        let light = NSColor(calibratedRed: 1, green: 0.85, blue: 0.67, alpha: 1)
-        let brown = NSColor(calibratedRed: 0.43, green: 0.27, blue: 0.18, alpha: 1)
-        let steel = NSColor(calibratedRed: 0.53, green: 0.60, blue: 0.67, alpha: 1)
-        let step: CGFloat = 5
+        // The entire view stays transparent. Only the workstation is drawn.
+        let shadow = NSColor.black.withAlphaComponent(0.13)
+        poly([NSPoint(x: 15,y: 17), NSPoint(x: 235,y: 17),
+              NSPoint(x: 258,y: 7), NSPoint(x: 35,y: 7)], shadow)
 
-        // Wooden desk and small monitor.
-        block(20, 28, 187, 40, ink)
-        block(25, 33, 177, 30, brown)
-        block(20, 63, 187, 9, ink)
-        block(25, 66, 177, 4, NSColor(calibratedRed: 0.67, green: 0.45, blue: 0.29, alpha: 1))
-        block(167, 79, 52, 50, ink)
-        block(173, 85, 40, 37, NSColor(calibratedRed: 0.18, green: 0.13, blue: 0.23, alpha: 1))
-        block(189, 71, 9, 10, ink)
-        block(179, 68, 29, 5, ink)
+        // Four separate wooden legs, including the two rear legs.
+        rect(49, 23, 7, 41, outline)
+        rect(51, 25, 4, 37, wood)
+        rect(208, 20, 8, 46, outline)
+        rect(210, 23, 4, 40, wood)
+        rect(24, 16, 9, 49, outline)
+        rect(27, 18, 5, 45, wood)
+        rect(187, 11, 10, 52, outline)
+        rect(190, 14, 6, 47, wood)
 
-        // Bin: dedicated destructive drop target.
-        block(227, 44, 42, 44, ink)
-        block(232, 49, 32, 35, steel)
-        block(223, 87, 50, 7, ink)
-        block(230, 90, 36, 4, NSColor.white.withAlphaComponent(0.65))
-        for x in stride(from: 238, through: 258, by: 10) { block(CGFloat(x), 55, 3, 24, ink.withAlphaComponent(0.3)) }
+        // Isometric wooden desktop with dark edge.
+        poly([NSPoint(x: 18,y: 70), NSPoint(x: 191,y: 70),
+              NSPoint(x: 221,y: 57), NSPoint(x: 43,y: 57)], outline)
+        poly([NSPoint(x: 22,y: 71), NSPoint(x: 189,y: 71),
+              NSPoint(x: 216,y: 61), NSPoint(x: 44,y: 61)], wood)
+        poly([NSPoint(x: 43,y: 61), NSPoint(x: 216,y: 61),
+              NSPoint(x: 216,y: 56), NSPoint(x: 43,y: 56)], NSColor(calibratedRed: 0.55, green: 0.34, blue: 0.22, alpha: 1))
 
-        // Cat pixels in a stable logical 20x20 grid.
-        let tailOffset: CGFloat = frameIndex % 12 < 6 ? 0 : 5
-        block(43, 86 + tailOffset, 15, 11, ink)
-        block(39, 78 + tailOffset, 10, 14, orange)
-        let pixels: [String] = [
-            "....OO......OO....",
-            "...OXXO....OXXO...",
-            "..OXXXXOOOOXXXXO..",
-            "..OXXXXXXXXXXXXO..",
-            ".OXXXXXXXXXXXXXXO.",
-            ".OXXXXXXXXXXXXXXO.",
-            "OXXXXKXXXXXXKXXXXO",
-            "OXXXXXXXXXXXXXXXXO",
-            "OXXXXXXKKXXXXXXXXO",
-            "OXXXXLLLLLLXXXXXXO",
-            ".OXXLLLLLLLLXXXXO.",
-            ".OXXLLLLLLLLXXXXO.",
-            "..OLLLLLLLLLLXXO..",
-            "..OLLLLLLLLLLXXO..",
-            "...OLLLLLLLLXXO...",
-            "...OXXXXXXXXXXO....",
-            "...OXXXXXXXXXXO....",
-            "....OOOOOOOOOO....."
+        // Brown chair behind the cat.
+        rect(180, 88, 27, 57, outline)
+        rect(184, 91, 19, 50, NSColor(calibratedRed: 0.52, green: 0.32, blue: 0.22, alpha: 1))
+
+        // Calico cat, with tiny blinking and paw-typing animations.
+        let cat: [String] = [
+            ".....GG.......OO.....",
+            "....GgGG.....OoOO....",
+            "...GgggGG...OooOO....",
+            "..GgggggGWWOoooOO...",
+            "..GgggWWWWWOoooOO...",
+            ".GGgWWWWWWWOoooOO...",
+            ".GgWWWWWWWWWOooOO...",
+            ".GgWWKWWWWKWWOOO....",
+            ".GGWWWWPWWWWWWWW....",
+            "..GWWWWPPWWWWWWW....",
+            "...WWWWWWWWWWWWWW...",
+            "...WWWWWWWWWWWWWW...",
+            "..WWWWWWWWWWWWWWW...",
+            ".WWWWWWWWWWWWWWWW...",
+            ".WWWWWWWWWWWWWWWW...",
+            "..WWWWWWWWWWWWWW....",
+            "...WWWWWWWWWWWW.....",
+            "....WWWWWWWWWW......"
         ]
-        let sleepy = machine.state == .idle && frameIndex % 110 > 82
-        let blink = frameIndex % 39 == 0 || sleepy
-        let walking = machine.state == .carry || machine.state == .walk || machine.state == .throwing
-        let offset: CGFloat = walking ? CGFloat(min(frameIndex % 9, 5)) * 5 : 0
-        let bounce: CGFloat = machine.state == .happy && frameIndex % 6 < 3 ? 10 : 0
-        for (row, line) in pixels.enumerated() {
-            for (column, ch) in line.enumerated() {
-                let c: NSColor?
-                switch ch {
-                case "O": c = ink
-                case "X": c = orange
-                case "L": c = light
-                case "K": c = blink ? orange : ink
-                default: c = nil
-                }
-                if let c {
-                    block(47 + CGFloat(column) * step + offset,
-                          70 + CGFloat(pixels.count - row) * step + bounce,
-                          step, step, c)
-                }
+        let blink = tick % 38 == 0 || tick % 38 == 1
+        let palette: [Character: NSColor] = [
+            "G": outline, "g": grey, "O": outline, "o": ginger,
+            "W": cream, "K": blink ? cream : outline,
+            "P": NSColor(calibratedRed: 0.92, green: 0.43, blue: 0.48, alpha: 1)
+        ]
+        let bounce: CGFloat = machine.state == .happy && tick % 4 < 2 ? 4 : 0
+        shape(125, 87 + bounce, cat, 3, palette)
+        // Tiny whiskers and typing paws.
+        rect(129, 115 + bounce, 10, 2, grey)
+        rect(180, 115 + bounce, 10, 2, grey)
+        let pawShift: CGFloat = tick % 4 < 2 ? 0 : 2
+        rect(145, 85 + pawShift, 16, 8, outline)
+        rect(147, 88 + pawShift, 12, 5, cream)
+        rect(170, 85 - pawShift, 15, 8, outline)
+        rect(172, 88 - pawShift, 11, 5, cream)
+
+        // Grey monitor, stand and keyboard in the foreground.
+        rect(36, 90, 85, 62, outline)
+        rect(40, 94, 77, 54, grey)
+        rect(44, 141, 67, 4, NSColor.white.withAlphaComponent(0.18))
+        rect(74, 73, 16, 23, outline)
+        rect(77, 75, 10, 19, NSColor(calibratedWhite: 0.59, alpha: 1))
+        rect(60, 71, 44, 6, outline)
+        poly([NSPoint(x: 94,y: 81), NSPoint(x: 163,y: 81),
+              NSPoint(x: 183,y: 70), NSPoint(x: 112,y: 70)], outline)
+        poly([NSPoint(x: 99,y: 79), NSPoint(x: 161,y: 79),
+              NSPoint(x: 176,y: 73), NSPoint(x: 114,y: 73)], NSColor(calibratedWhite: 0.58, alpha: 1))
+        for row in 0..<2 {
+            for col in 0..<10 {
+                rect(111 + CGFloat(col)*5 + CGFloat(row)*3, 75 + CGFloat(row)*3, 3, 1.5,
+                     NSColor(calibratedWhite: 0.36, alpha: 1))
             }
         }
-        if machine.state == .happy {
-            let attributes: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 21)]
-            ("✦" as NSString).draw(at: NSPoint(x: 148, y: 151), withAttributes: attributes)
+
+        // Neat paper stack at the right end of the desk.
+        for i in 0..<9 {
+            let y = CGFloat(75 + i * 5)
+            rect(201, y, 40, 5, outline)
+            rect(204, y + 1, 35, 4, NSColor(calibratedWhite: 0.92, alpha: 1))
         }
-        if machine.state == .carry || machine.state == .throwing {
-            block(142 + offset, 106, 22, 25, ink)
-            block(146 + offset, 111, 15, 17, NSColor.white)
+        rect(207, 120, 31, 3, NSColor(calibratedWhite: 0.98, alpha: 1))
+
+        // Small metal wastebasket on the floor beneath the right side.
+        rect(216, 16, 29, 36, outline)
+        rect(220, 19, 21, 31, NSColor(calibratedWhite: 0.63, alpha: 1))
+        rect(213, 49, 35, 6, outline)
+        rect(217, 51, 27, 3, NSColor(calibratedWhite: 0.85, alpha: 1))
+        for x in stride(from: 224, through: 237, by: 6) {
+            rect(CGFloat(x), 22, 2, 23, NSColor.white.withAlphaComponent(0.24))
         }
-        if Date() < messageUntil {
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-                .foregroundColor: NSColor.labelColor
-            ]
-            (message as NSString).draw(at: NSPoint(x: 30, y: 1), withAttributes: attrs)
+        if machine.state == .alert {
+            rect(211, 56, 38, 3, NSColor.systemYellow)
+        }
+        if machine.state == .throwing || machine.state == .carry {
+            rect(205, 85, 13, 14, outline)
+            rect(207, 87, 9, 10, cream)
         }
     }
 
+    // Track pointer in global screen coordinates: no cumulative drift and no popup on drag.
     override func mouseDown(with event: NSEvent) {
-        let point = convert(event.locationInWindow, from: nil)
-        dragOrigin = event.locationInWindow
-        if catRect.contains(point) {
-            showActions(at: point)
-        }
+        dragStartScreen = NSEvent.mouseLocation
+        windowStart = window?.frame.origin
+        dragged = false
     }
-
     override func mouseDragged(with event: NSEvent) {
-        guard let start = dragOrigin, let window else { return }
-        let current = event.locationInWindow
-        let dx = current.x - start.x
-        let dy = current.y - start.y
-        if abs(dx) + abs(dy) > 2 {
-            window.setFrameOrigin(NSPoint(x: window.frame.origin.x + dx,
-                                          y: window.frame.origin.y + dy))
-        }
+        guard let start = dragStartScreen, let origin = windowStart, let window else { return }
+        let now = NSEvent.mouseLocation
+        let dx = now.x - start.x
+        let dy = now.y - start.y
+        if hypot(dx, dy) >= 3 { dragged = true }
+        if dragged { window.setFrameOrigin(NSPoint(x: origin.x + dx, y: origin.y + dy)) }
     }
-    override func mouseUp(with event: NSEvent) { dragOrigin = nil }
+    override func mouseUp(with event: NSEvent) {
+        let point = convert(event.locationInWindow, from: nil)
+        if !dragged && catHit.contains(point) { showActions(at: point) }
+        dragStartScreen = nil
+        windowStart = nil
+        dragged = false
+    }
 
     private func showActions(at point: NSPoint) {
         let menu = NSMenu()
-        let tasks = NSMenuItem(title: "Quick task (coming soon)", action: nil, keyEquivalent: "")
-        tasks.isEnabled = false
-        menu.addItem(tasks)
         menu.addItem(NSMenuItem(title: "Open Calendar", action: #selector(openCalendar), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Open Downloads", action: #selector(openDownloads), keyEquivalent: ""))
         menu.addItem(NSMenuItem(title: "Show Clipboard Text", action: #selector(showClipboard), keyEquivalent: ""))
         for item in menu.items { item.target = self }
         menu.popUp(positioning: nil, at: point, in: self)
     }
-
     @objc private func openCalendar() {
         NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Calendar.app"))
     }
     @objc private func openDownloads() {
-        NSWorkspace.shared.open(FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0])
+        if let url = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+            NSWorkspace.shared.open(url)
+        }
     }
     @objc private func showClipboard() {
-        let value = NSPasteboard.general.string(forType: .string) ?? "No text on clipboard"
         let alert = NSAlert()
-        alert.messageText = "Clipboard (current text only)"
-        alert.informativeText = String(value.prefix(500))
-        alert.addButton(withTitle: "OK")
+        alert.messageText = "Clipboard text"
+        alert.informativeText = String((NSPasteboard.general.string(forType: .string) ?? "Empty").prefix(500))
         alert.runModal()
     }
 
@@ -179,7 +224,7 @@ final class CatDropView: NSView {
             options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
     private func onBin(_ sender: NSDraggingInfo) -> Bool {
-        binRect.insetBy(dx: -8, dy: -8).contains(convert(sender.draggingLocation, from: nil))
+        binHit.insetBy(dx: -7, dy: -7).contains(convert(sender.draggingLocation, from: nil))
     }
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
@@ -218,10 +263,8 @@ final class CatDropView: NSView {
                 self.isProcessing = false
                 if failures.isEmpty {
                     self.machine.transition(to: .throwing)
-                    self.message = "Moved to Trash ✨"
-                    self.messageUntil = Date().addingTimeInterval(2.5)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
-                        self?.machine.transition(to: .happy, resetAfter: 1.5)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
+                        self?.machine.transition(to: .happy, resetAfter: 1.3)
                     }
                 } else {
                     self.machine.transition(to: .error, resetAfter: 2)
@@ -230,7 +273,6 @@ final class CatDropView: NSView {
                     alert.informativeText = failures.joined(separator: "\n")
                     alert.runModal()
                 }
-                self.needsDisplay = true
             }
         }
         return true
