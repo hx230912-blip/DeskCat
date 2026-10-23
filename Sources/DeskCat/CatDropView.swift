@@ -15,7 +15,9 @@ final class CatDropView: NSView {
 
     private let catHit = NSRect(x: 124, y: 61, width: 75, height: 93)
     private let binHit = NSRect(x: 207, y: 8, width: 49, height: 59)
+    private let artworkScale: CGFloat = 0.8
     override var isFlipped: Bool { false }
+    private func artworkPoint(_ p: NSPoint) -> NSPoint { NSPoint(x: p.x / artworkScale, y: p.y / artworkScale) }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
@@ -66,6 +68,9 @@ final class CatDropView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        NSGraphicsContext.saveGraphicsState()
+        NSAffineTransform(transform: AffineTransform(scale: artworkScale)).concat()
+        defer { NSGraphicsContext.restoreGraphicsState() }
         // The entire view stays transparent. Only the workstation is drawn.
         let shadow = NSColor.black.withAlphaComponent(0.13)
         poly([NSPoint(x: 15,y: 17), NSPoint(x: 235,y: 17),
@@ -122,6 +127,13 @@ final class CatDropView: NSView {
         ]
         let bounce: CGFloat = machine.state == .happy && tick % 4 < 2 ? 4 : 0
         shape(125, 87 + bounce, cat, 3, palette)
+        // Refined cream muzzle, blush and little pink nose.
+        rect(156, 113 + bounce, 18, 9, cream)
+        rect(161, 117 + bounce, 4, 3, NSColor(calibratedRed: 0.92, green: 0.44, blue: 0.48, alpha: 1))
+        rect(162, 114 + bounce, 2, 2, outline)
+        rect(165, 113 + bounce, 4, 2, outline)
+        rect(151, 116 + bounce, 5, 2, NSColor(calibratedRed: 0.96, green: 0.73, blue: 0.71, alpha: 1))
+        rect(172, 116 + bounce, 5, 2, NSColor(calibratedRed: 0.96, green: 0.73, blue: 0.71, alpha: 1))
         // Tiny whiskers and typing paws.
         rect(129, 115 + bounce, 10, 2, grey)
         rect(180, 115 + bounce, 10, 2, grey)
@@ -190,7 +202,7 @@ final class CatDropView: NSView {
     }
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if !dragged && catHit.contains(point) { showActions(at: point) }
+        if !dragged && catHit.contains(artworkPoint(point)) { showActions(at: point) }
         dragStartScreen = nil
         windowStart = nil
         dragged = false
@@ -224,7 +236,7 @@ final class CatDropView: NSView {
             options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
     private func onBin(_ sender: NSDraggingInfo) -> Bool {
-        binHit.insetBy(dx: -7, dy: -7).contains(convert(sender.draggingLocation, from: nil))
+        binHit.insetBy(dx: -7, dy: -7).contains(artworkPoint(convert(sender.draggingLocation, from: nil)))
     }
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
