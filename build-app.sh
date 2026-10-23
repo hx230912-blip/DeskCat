@@ -46,8 +46,8 @@ cat > "$STAGING/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIdentifier</key><string>io.github.hx230912-blip.DeskCat</string>
   <key>CFBundleExecutable</key><string>DeskCat</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.6.0</string>
-  <key>CFBundleVersion</key><string>6</string>
+  <key>CFBundleShortVersionString</key><string>0.8.0</string>
+  <key>CFBundleVersion</key><string>8</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
