@@ -1,10 +1,9 @@
 import Foundation
 
 enum CatState: String, CaseIterable {
-    case idle, alert, carry, walk, throwing, happy, error
+    case idle, grooming, sleeping, walking, alert, carry, throwing, happy, error
 }
 
-/// Keeps visual states independent from file-system outcomes.
 @MainActor
 final class CatStateMachine {
     private(set) var state: CatState = .idle
@@ -17,10 +16,18 @@ final class CatStateMachine {
         onChange?(newState)
         if let seconds {
             pendingReset = Task { [weak self] in
-                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
                 guard !Task.isCancelled else { return }
                 self?.transition(to: .idle)
             }
         }
+    }
+
+    func idleActivity() {
+        guard [.idle, .grooming, .sleeping].contains(state) else { return }
+        let roll = Int.random(in: 0..<100)
+        if roll < 18 { transition(to: .grooming, resetAfter: 4) }
+        else if roll < 30 { transition(to: .sleeping, resetAfter: 8) }
+        else { transition(to: .idle) }
     }
 }
