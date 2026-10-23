@@ -25,7 +25,7 @@ final class CatDropView: NSView {
     private var lastBehavior = Date.distantPast
     private var trashJourneyStarted: Date?
     private var imageCache: [String: NSImage] = [:]
-    private let frames: [String: Int] = ["idle":2,"groom":8,"sleep":6,"walk":8,"stand":6,"carry":6,"throw":8,"happy":6,"typing":8,"clock":6]
+    private let frames: [String: Int] = ["idle":2,"groom":8,"sleep":6,"walk":8,"stand":6,"carry":6,"throw":8,"happy":6,"typing":8,"clock":6,"walkback":8]
     private func setAnimation(_ name: String) {
         animationName = name
         animationStarted = Date()
@@ -121,11 +121,13 @@ final class CatDropView: NSView {
             let elapsed = max(0, Date().timeIntervalSince(animationStarted))
             let fps: Double = animationName == "sleep" ? 3 : (animationName == "groom" ? 7 : 10)
             let frame = Int(elapsed * fps) % count
-            let key = String(format: "Cat_%@_%02d", animationName, frame)
+            let spriteName = animationName == "walkback" ? "walk" : animationName
+            let spriteFrame = animationName == "walkback" ? max(0, count - 1 - frame) : frame
+            let key = String(format: "Cat_%@_%02d", spriteName, spriteFrame)
             if let sprite = resource(key) ?? resource("Cat_idle_00") {
                 if let journey = trashJourneyStarted {
                     let progress = min(1, max(0, Date().timeIntervalSince(journey) / 1.25))
-                    drawImage(sprite, in: bounds.offsetBy(dx: CGFloat(progress * 66), dy: CGFloat(-progress * 42)))
+                    drawImage(sprite, in: bounds)
                 } else {
                     drawImage(sprite, in: bounds)
                 }
@@ -134,8 +136,8 @@ final class CatDropView: NSView {
 
         if let start = trashAnimationStart {
             let t = min(1, Date().timeIntervalSince(start) / 0.85)
-            let x = 164 + 52 * t
-            let y = 106 - 74 * t + 30 * sin(.pi * t)
+            let x = 191 + 26 * t
+            let y = 91 - 54 * t + 22 * sin(.pi * t)
             drawGlyph("▤", at: NSPoint(x: x, y: y), color: .white, size: 15)
             if t >= 1 {
                 trashAnimationStart = nil
@@ -335,7 +337,7 @@ final class CatDropView: NSView {
             self.setAnimation("walk")
             self.trashJourneyStarted = Date()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.25) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.45) { [weak self] in
             guard let self, self.processing else { return }
             self.setAnimation("throw")
             self.trashAnimationStart = Date()
@@ -352,7 +354,12 @@ final class CatDropView: NSView {
             self.processing = false
             self.trashJourneyStarted = nil
             if failures.isEmpty {
-                self.machine.transition(to: .happy, resetAfter: 2)
+                self.setAnimation("walkback")
+                self.busyUntil = Date().addingTimeInterval(2)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) { [weak self] in
+                    guard let self else { return }
+                    self.machine.transition(to: .happy, resetAfter: 1.2)
+                }
                 self.showToast("Moved to Trash")
             } else {
                 self.machine.transition(to: .error, resetAfter: 3)
