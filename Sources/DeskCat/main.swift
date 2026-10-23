@@ -27,7 +27,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem?.button?.title = "🐈"
         statusItem?.menu = menu
 
-        let size = NSSize(width: 270, height: 180)
+        let size = NSSize(width: 216, height: 144)
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                             styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
