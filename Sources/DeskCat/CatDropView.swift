@@ -24,6 +24,10 @@ final class CatDropView: NSView {
     private var dragAnimating = false
     private var lastBehavior = Date.distantPast
     private var trashJourneyStarted: Date?
+    private var trashPhase = 0
+    private var trashPhaseStart = Date.distantPast
+    private var trashTargets: [URL] = []
+    private var returnStarted = Date.distantPast
     private var imageCache: [String: NSImage] = [:]
     private let frames: [String: Int] = ["idle":2,"groom":8,"sleep":6,"walk":8,"stand":6,"carry":6,"throw":8,"happy":6,"typing":8,"clock":6,"walkback":8]
     private func setAnimation(_ name: String) {
@@ -125,12 +129,20 @@ final class CatDropView: NSView {
             let spriteFrame = animationName == "walkback" ? max(0, count - 1 - frame) : frame
             let key = String(format: "Cat_%@_%02d", spriteName, spriteFrame)
             if let sprite = resource(key) ?? resource("Cat_idle_00") {
-                if let journey = trashJourneyStarted {
-                    let progress = min(1, max(0, Date().timeIntervalSince(journey) / 1.25))
-                    drawImage(sprite, in: bounds)
-                } else {
-                    drawImage(sprite, in: bounds)
+                var dx: CGFloat = 0
+                var dy: CGFloat = 0
+                if processing {
+                    let t = min(1, max(0, Date().timeIntervalSince(trashPhaseStart) / 0.75))
+                    let eased = t * t * (3 - 2 * t)
+                    if trashPhase == 1 { dx = CGFloat(70 * eased); dy = CGFloat(-42 * eased) }
+                    if trashPhase >= 2 { dx = 70; dy = -42 }
+                } else if animationName == "walkback" {
+                    let t = min(1, max(0, Date().timeIntervalSince(returnStarted) / 0.75))
+                    let eased = t * t * (3 - 2 * t)
+                    dx = CGFloat(70 * (1 - eased))
+                    dy = CGFloat(-42 * (1 - eased))
                 }
+                drawImage(sprite, in: bounds.offsetBy(dx: dx, dy: dy))
             }
         } else if let image { drawImage(image, in: bounds) }
 
