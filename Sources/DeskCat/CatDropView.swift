@@ -134,13 +134,13 @@ final class CatDropView: NSView {
                 if processing {
                     let t = min(1, max(0, Date().timeIntervalSince(trashPhaseStart) / 0.75))
                     let eased = t * t * (3 - 2 * t)
-                    if trashPhase == 1 { dx = CGFloat(70 * eased); dy = CGFloat(-42 * eased) }
-                    if trashPhase >= 2 { dx = 70; dy = -42 }
+                    if trashPhase == 1 { dx = CGFloat(44 * eased); dy = CGFloat(-24 * eased) }
+                    if trashPhase >= 2 { dx = 44; dy = -24 }
                 } else if animationName == "walkback" {
                     let t = min(1, max(0, Date().timeIntervalSince(returnStarted) / 0.75))
                     let eased = t * t * (3 - 2 * t)
-                    dx = CGFloat(70 * (1 - eased))
-                    dy = CGFloat(-42 * (1 - eased))
+                    dx = CGFloat(44 * (1 - eased))
+                    dy = CGFloat(-24 * (1 - eased))
                 }
                 drawImage(sprite, in: bounds.offsetBy(dx: dx, dy: dy))
             }
@@ -149,8 +149,12 @@ final class CatDropView: NSView {
         if let start = trashAnimationStart {
             let t = min(1, Date().timeIntervalSince(start) / 0.85)
             let x = 191 + 26 * t
-            let y = 91 - 54 * t + 22 * sin(.pi * t)
+            let y = 65 - 30 * t + 18 * sin(.pi * t)
+            if let paper = resource("PaperFlying") {
+                drawImage(paper, in: NSRect(x: x, y: y, width: 15, height: 15))
+            } else {
             drawGlyph("▤", at: NSPoint(x: x, y: y), color: .white, size: 15)
+            }
             if t >= 1 {
                 trashAnimationStart = nil
                 let completion = trashCompletion
