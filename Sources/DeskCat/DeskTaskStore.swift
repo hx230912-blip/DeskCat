@@ -78,8 +78,25 @@ final class MeetingService {
                 let start = Date()
                 let end = Calendar.current.date(byAdding: .day, value: 2, to: start)!
                 let predicate = self.store.predicateForEvents(withStart: start, end: end, calendars: nil)
-                completion(Array(self.store.events(matching: predicate).prefix(12)), nil)
+                let events = Array(self.store.events(matching: predicate).prefix(12))
+                self.scheduleMeetingReminders(events)
+                completion(events, nil)
             }
+        }
+    }
+    private func scheduleMeetingReminders(_ events: [EKEvent]) {
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        for event in events {
+            let fire = event.startDate.addingTimeInterval(-300)
+            guard fire > Date(), let identifier = event.eventIdentifier else { continue }
+            let content = UNMutableNotificationContent()
+            content.title = "DeskCat · Meeting in 5 minutes"
+            content.body = event.title ?? "Upcoming calendar event"
+            content.sound = .default
+            let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, fire.timeIntervalSinceNow), repeats: false)
+            let key = "deskcat.meeting." + identifier + "." + String(Int(event.startDate.timeIntervalSince1970))
+            center.add(UNNotificationRequest(identifier: key, content: content, trigger: trigger))
         }
     }
 }
