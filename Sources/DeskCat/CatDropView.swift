@@ -1,32 +1,45 @@
 import AppKit
 
-/// Compact transparent pixel workstation. Drag anywhere except the Trash drop target
-/// to reposition; clicking the cat (without moving) opens quick actions.
+/// Transparent, movable pixel-art companion. Coordinates are in a 256×176 view.
 @MainActor
 final class CatDropView: NSView {
-    private let trashService = TrashService()
     private let machine = CatStateMachine()
+    private let trashService = TrashService()
+    private let tasks = DeskTaskStore.shared
     private var timer: Timer?
-    private var tick = 0
-    private var dragStartScreen: NSPoint?
-    private var windowStart: NSPoint?
-    private var dragged = false
-    private var isProcessing = false
+    private var ticks = 0
+    private var dragStart: NSPoint?
+    private var origin: NSPoint?
+    private var didDrag = false
+    private var processing = false
+    private var trashAnimationStart: Date?
+    private var trashCompletion: (() -> Void)?
+    private var toast: String?
+    private var toastUntil: Date = .distantPast
 
-    private let catHit = NSRect(x: 124, y: 61, width: 75, height: 93)
-    private let binHit = NSRect(x: 207, y: 8, width: 49, height: 59)
-    private let artworkScale: CGFloat = 0.8
+    // Render in a fixed logical canvas; preserve transparency.
+    private let catRect = NSRect(x: 98, y: 62, width: 78, height: 83)
+    private let monitorRect = NSRect(x: 12, y: 60, width: 85, height: 78)
+    private let paperRect = NSRect(x: 178, y: 60, width: 57, height: 72)
+    private let binRect = NSRect(x: 193, y: 2, width: 51, height: 49)
+    private let deskRect = NSRect(x: 9, y: 35, width: 229, height: 31)
+
+    private lazy var image: NSImage? = {
+        guard let url = Bundle.module.url(forResource: "DeskCatScene", withExtension: "png") else { return nil }
+        return NSImage(contentsOf: url)
+    }()
     override var isFlipped: Bool { false }
-    private func artworkPoint(_ p: NSPoint) -> NSPoint { NSPoint(x: p.x / artworkScale, y: p.y / artworkScale) }
+    override var acceptsFirstResponder: Bool { true }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         registerForDraggedTypes([.fileURL])
         machine.onChange = { [weak self] _ in self?.needsDisplay = true }
-        timer = Timer.scheduledTimer(withTimeInterval: 0.20, repeats: true) { [weak self] _ in
+        timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 15, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.tick += 1
+                self.ticks += 1
+                if self.ticks % 150 == 0 { self.machine.idleActivity() }
                 self.needsDisplay = true
             }
         }
@@ -34,188 +47,122 @@ final class CatDropView: NSView {
     required init?(coder: NSCoder) { fatalError("init(coder:) not implemented") }
     deinit { timer?.invalidate() }
 
-    private let outline = NSColor(calibratedWhite: 0.12, alpha: 1)
-    private let cream = NSColor(calibratedRed: 0.99, green: 0.96, blue: 0.86, alpha: 1)
-    private let ginger = NSColor(calibratedRed: 0.96, green: 0.64, blue: 0.35, alpha: 1)
-    private let grey = NSColor(calibratedRed: 0.43, green: 0.44, blue: 0.47, alpha: 1)
-    private let wood = NSColor(calibratedRed: 0.83, green: 0.59, blue: 0.37, alpha: 1)
-
-    private func rect(_ x: CGFloat, _ y: CGFloat, _ w: CGFloat, _ h: CGFloat, _ color: NSColor) {
-        color.setFill()
-        NSRect(x: x, y: y, width: w, height: h).fill()
+    private func drawImage(_ image: NSImage, in rect: NSRect) {
+        NSGraphicsContext.current?.imageInterpolation = .none
+        image.draw(in: rect, from: .zero, operation: .sourceOver, fraction: 1)
     }
-    private func poly(_ points: [NSPoint], _ color: NSColor) {
-        guard let first = points.first else { return }
-        let p = NSBezierPath()
-        p.move(to: first)
-        for point in points.dropFirst() { p.line(to: point) }
-        p.close()
-        color.setFill()
-        p.fill()
-    }
-    private func shape(_ x: CGFloat, _ y: CGFloat, _ pixels: [String], _ scale: CGFloat,
-                       _ palette: [Character: NSColor]) {
-        for (row, line) in pixels.enumerated() {
-            for (col, char) in line.enumerated() {
-                if let color = palette[char] {
-                    rect(x + CGFloat(col) * scale,
-                         y + CGFloat(pixels.count - row - 1) * scale,
-                         scale, scale, color)
-                }
-            }
-        }
-    }
-
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
-        NSGraphicsContext.saveGraphicsState()
-        NSAffineTransform(transform: AffineTransform(scale: artworkScale)).concat()
-        defer { NSGraphicsContext.restoreGraphicsState() }
-        // The entire view stays transparent. Only the workstation is drawn.
-        let shadow = NSColor.black.withAlphaComponent(0.13)
-        poly([NSPoint(x: 15,y: 17), NSPoint(x: 235,y: 17),
-              NSPoint(x: 258,y: 7), NSPoint(x: 35,y: 7)], shadow)
+        guard let image else { return }
+        drawImage(image, in: bounds)
 
-        // Four separate wooden legs, including the two rear legs.
-        rect(49, 23, 7, 41, outline)
-        rect(51, 25, 4, 37, wood)
-        rect(208, 20, 8, 46, outline)
-        rect(210, 23, 4, 40, wood)
-        rect(24, 16, 9, 49, outline)
-        rect(27, 18, 5, 45, wood)
-        rect(187, 11, 10, 52, outline)
-        rect(190, 14, 6, 47, wood)
-
-        // Isometric wooden desktop with dark edge.
-        poly([NSPoint(x: 18,y: 70), NSPoint(x: 191,y: 70),
-              NSPoint(x: 221,y: 57), NSPoint(x: 43,y: 57)], outline)
-        poly([NSPoint(x: 22,y: 71), NSPoint(x: 189,y: 71),
-              NSPoint(x: 216,y: 61), NSPoint(x: 44,y: 61)], wood)
-        poly([NSPoint(x: 43,y: 61), NSPoint(x: 216,y: 61),
-              NSPoint(x: 216,y: 56), NSPoint(x: 43,y: 56)], NSColor(calibratedRed: 0.55, green: 0.34, blue: 0.22, alpha: 1))
-
-        // Brown chair behind the cat.
-        rect(180, 88, 27, 57, outline)
-        rect(184, 91, 19, 50, NSColor(calibratedRed: 0.52, green: 0.32, blue: 0.22, alpha: 1))
-
-        // Calico cat, with tiny blinking and paw-typing animations.
-        let cat: [String] = [
-            ".....GG.......OO.....",
-            "....GgGG.....OoOO....",
-            "...GgggGG...OooOO....",
-            "..GgggggGWWOoooOO...",
-            "..GgggWWWWWOoooOO...",
-            ".GGgWWWWWWWOoooOO...",
-            ".GgWWWWWWWWWOooOO...",
-            ".GgWWKWWWWKWWOOO....",
-            ".GGWWWWPWWWWWWWW....",
-            "..GWWWWPPWWWWWWW....",
-            "...WWWWWWWWWWWWWW...",
-            "...WWWWWWWWWWWWWW...",
-            "..WWWWWWWWWWWWWWW...",
-            ".WWWWWWWWWWWWWWWW...",
-            ".WWWWWWWWWWWWWWWW...",
-            "..WWWWWWWWWWWWWW....",
-            "...WWWWWWWWWWWW.....",
-            "....WWWWWWWWWW......"
-        ]
-        let blink = tick % 38 == 0 || tick % 38 == 1
-        let palette: [Character: NSColor] = [
-            "G": outline, "g": grey, "O": outline, "o": ginger,
-            "W": cream, "K": blink ? cream : outline,
-            "P": NSColor(calibratedRed: 0.92, green: 0.43, blue: 0.48, alpha: 1)
-        ]
-        let bounce: CGFloat = machine.state == .happy && tick % 4 < 2 ? 4 : 0
-        shape(125, 87 + bounce, cat, 3, palette)
-        // Refined cream muzzle, blush and little pink nose.
-        rect(156, 113 + bounce, 18, 9, cream)
-        rect(161, 117 + bounce, 4, 3, NSColor(calibratedRed: 0.92, green: 0.44, blue: 0.48, alpha: 1))
-        rect(162, 114 + bounce, 2, 2, outline)
-        rect(165, 113 + bounce, 4, 2, outline)
-        rect(151, 116 + bounce, 5, 2, NSColor(calibratedRed: 0.96, green: 0.73, blue: 0.71, alpha: 1))
-        rect(172, 116 + bounce, 5, 2, NSColor(calibratedRed: 0.96, green: 0.73, blue: 0.71, alpha: 1))
-        // Tiny whiskers and typing paws.
-        rect(129, 115 + bounce, 10, 2, grey)
-        rect(180, 115 + bounce, 10, 2, grey)
-        let pawShift: CGFloat = tick % 4 < 2 ? 0 : 2
-        rect(145, 85 + pawShift, 16, 8, outline)
-        rect(147, 88 + pawShift, 12, 5, cream)
-        rect(170, 85 - pawShift, 15, 8, outline)
-        rect(172, 88 - pawShift, 11, 5, cream)
-
-        // Grey monitor, stand and keyboard in the foreground.
-        rect(36, 90, 85, 62, outline)
-        rect(40, 94, 77, 54, grey)
-        rect(44, 141, 67, 4, NSColor.white.withAlphaComponent(0.18))
-        rect(74, 73, 16, 23, outline)
-        rect(77, 75, 10, 19, NSColor(calibratedWhite: 0.59, alpha: 1))
-        rect(60, 71, 44, 6, outline)
-        poly([NSPoint(x: 94,y: 81), NSPoint(x: 163,y: 81),
-              NSPoint(x: 183,y: 70), NSPoint(x: 112,y: 70)], outline)
-        poly([NSPoint(x: 99,y: 79), NSPoint(x: 161,y: 79),
-              NSPoint(x: 176,y: 73), NSPoint(x: 114,y: 73)], NSColor(calibratedWhite: 0.58, alpha: 1))
-        for row in 0..<2 {
-            for col in 0..<10 {
-                rect(111 + CGFloat(col)*5 + CGFloat(row)*3, 75 + CGFloat(row)*3, 3, 1.5,
-                     NSColor(calibratedWhite: 0.36, alpha: 1))
+        // Lightweight visual animation layers over the preserved reference artwork.
+        let phase = CGFloat(ticks % 30) / 30
+        switch machine.state {
+        case .sleeping:
+            drawGlyph("z", at: NSPoint(x: 150, y: 147 + phase * 8), color: .systemIndigo, size: 12)
+            if ticks % 45 < 20 { drawGlyph("z", at: NSPoint(x: 163, y: 157), color: .systemIndigo, size: 9) }
+        case .grooming:
+            let dx: CGFloat = ticks % 10 < 5 ? 0 : 3
+            drawGlyph("♥", at: NSPoint(x: 137 + dx, y: 135), color: .systemPink, size: 9)
+        case .walking, .carry:
+            let dx: CGFloat = CGFloat(ticks % 12) * 2
+            drawGlyph("▣", at: NSPoint(x: 165 + dx, y: 79), color: .white, size: 15)
+        case .happy:
+            drawGlyph("✦", at: NSPoint(x: 161, y: 143 + (ticks % 6 < 3 ? 2 : 0)), color: .systemYellow, size: 15)
+        case .alert:
+            drawGlyph("!", at: NSPoint(x: 218, y: 48), color: .systemYellow, size: 13)
+        case .error:
+            drawGlyph("!", at: NSPoint(x: 149, y: 149), color: .systemRed, size: 13)
+        default: break
+        }
+        if let start = trashAnimationStart {
+            let t = min(1, Date().timeIntervalSince(start) / 1.0)
+            // Arc from cat to the floor bin. A paper icon travels over the static art.
+            let x = 148 + 67 * t
+            let y = 100 - 62 * t + 32 * sin(.pi * t)
+            drawGlyph("▤", at: NSPoint(x: x, y: y), color: .white, size: 18)
+            if t >= 1 {
+                trashAnimationStart = nil
+                let completion = trashCompletion
+                trashCompletion = nil
+                DispatchQueue.main.async { completion?() }
             }
         }
-
-        // Neat paper stack at the right end of the desk.
-        for i in 0..<9 {
-            let y = CGFloat(75 + i * 5)
-            rect(201, y, 40, 5, outline)
-            rect(204, y + 1, 35, 4, NSColor(calibratedWhite: 0.92, alpha: 1))
-        }
-        rect(207, 120, 31, 3, NSColor(calibratedWhite: 0.98, alpha: 1))
-
-        // Small metal wastebasket on the floor beneath the right side.
-        rect(216, 16, 29, 36, outline)
-        rect(220, 19, 21, 31, NSColor(calibratedWhite: 0.63, alpha: 1))
-        rect(213, 49, 35, 6, outline)
-        rect(217, 51, 27, 3, NSColor(calibratedWhite: 0.85, alpha: 1))
-        for x in stride(from: 224, through: 237, by: 6) {
-            rect(CGFloat(x), 22, 2, 23, NSColor.white.withAlphaComponent(0.24))
-        }
-        if machine.state == .alert {
-            rect(211, 56, 38, 3, NSColor.systemYellow)
-        }
-        if machine.state == .throwing || machine.state == .carry {
-            rect(205, 85, 13, 14, outline)
-            rect(207, 87, 9, 10, cream)
+        if let toast, Date() < toastUntil {
+            drawGlyph(toast, at: NSPoint(x: 15, y: 156), color: .labelColor, size: 10)
         }
     }
+    private func drawGlyph(_ text: String, at point: NSPoint, color: NSColor, size: CGFloat) {
+        (text as NSString).draw(at: point, withAttributes: [
+            .font: NSFont.boldSystemFont(ofSize: size),
+            .foregroundColor: color,
+            .strokeColor: NSColor.white.withAlphaComponent(0.65),
+            .strokeWidth: -2
+        ])
+    }
+    private func showToast(_ message: String) {
+        toast = message
+        toastUntil = Date().addingTimeInterval(2)
+        needsDisplay = true
+    }
 
-    // Track pointer in global screen coordinates: no cumulative drift and no popup on drag.
+    // Drag entire workstation with a 4-point threshold; clicks never move it.
     override func mouseDown(with event: NSEvent) {
-        dragStartScreen = NSEvent.mouseLocation
-        windowStart = window?.frame.origin
-        dragged = false
+        dragStart = NSEvent.mouseLocation
+        origin = window?.frame.origin
+        didDrag = false
     }
     override func mouseDragged(with event: NSEvent) {
-        guard let start = dragStartScreen, let origin = windowStart, let window else { return }
+        guard let start = dragStart, let origin, let window else { return }
         let now = NSEvent.mouseLocation
-        let dx = now.x - start.x
-        let dy = now.y - start.y
-        if hypot(dx, dy) >= 3 { dragged = true }
-        if dragged { window.setFrameOrigin(NSPoint(x: origin.x + dx, y: origin.y + dy)) }
+        let dx = now.x - start.x, dy = now.y - start.y
+        if hypot(dx, dy) > 4 { didDrag = true }
+        if didDrag { window.setFrameOrigin(NSPoint(x: origin.x + dx, y: origin.y + dy)) }
     }
     override func mouseUp(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
-        if !dragged && catHit.contains(artworkPoint(point)) { showActions(at: point) }
-        dragStartScreen = nil
-        windowStart = nil
-        dragged = false
+        if !didDrag { showMenu(for: point) }
+        dragStart = nil
+        origin = nil
+        didDrag = false
     }
-
-    private func showActions(at point: NSPoint) {
+    private func showMenu(for point: NSPoint) {
         let menu = NSMenu()
-        menu.addItem(NSMenuItem(title: "Open Calendar", action: #selector(openCalendar), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Open Downloads", action: #selector(openDownloads), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Show Clipboard Text", action: #selector(showClipboard), keyEquivalent: ""))
-        for item in menu.items { item.target = self }
+        func item(_ title: String, _ action: Selector) {
+            let row = NSMenuItem(title: title, action: action, keyEquivalent: "")
+            row.target = self
+            menu.addItem(row)
+        }
+        if binRect.contains(point) {
+            item("Drop files here to move to Trash", #selector(trashHelp))
+        } else if paperRect.contains(point) {
+            item("To-do list…", #selector(showTasks))
+            item("Add task…", #selector(addTask))
+        } else if monitorRect.contains(point) {
+            item("Upcoming meetings…", #selector(showMeetings))
+            item("Open Calendar", #selector(openCalendar))
+        } else if catRect.contains(point) {
+            item("To-do list…", #selector(showTasks))
+            item("Add task…", #selector(addTask))
+            item("Upcoming meetings…", #selector(showMeetings))
+            menu.addItem(.separator())
+            item("Play: Groom", #selector(groom))
+            item("Play: Sleep", #selector(sleep))
+            item("Play: Walk", #selector(walk))
+        } else if deskRect.contains(point) {
+            item("Drag desk to reposition", #selector(dragHelp))
+            item("Open Downloads", #selector(openDownloads))
+        } else {
+            item("DeskCat", #selector(dragHelp))
+        }
         menu.popUp(positioning: nil, at: point, in: self)
     }
+    @objc private func trashHelp() { showToast("Drop a file on the bin") }
+    @objc private func dragHelp() { showToast("Drag to move DeskCat") }
+    @objc private func groom() { machine.transition(to: .grooming, resetAfter: 5) }
+    @objc private func sleep() { machine.transition(to: .sleeping, resetAfter: 8) }
+    @objc private func walk() { machine.transition(to: .walking, resetAfter: 2) }
     @objc private func openCalendar() {
         NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Calendar.app"))
     }
@@ -224,67 +171,123 @@ final class CatDropView: NSView {
             NSWorkspace.shared.open(url)
         }
     }
-    @objc private func showClipboard() {
+    @objc private func addTask() {
         let alert = NSAlert()
-        alert.messageText = "Clipboard text"
-        alert.informativeText = String((NSPasteboard.general.string(forType: .string) ?? "Empty").prefix(500))
-        alert.runModal()
+        alert.messageText = "New DeskCat task"
+        alert.informativeText = "Enter a task. Optionally set a reminder in minutes."
+        let title = NSTextField(frame: NSRect(x: 0, y: 32, width: 280, height: 24))
+        title.placeholderString = "Task name"
+        let minutes = NSTextField(frame: NSRect(x: 0, y: 0, width: 280, height: 24))
+        minutes.placeholderString = "Reminder in minutes (optional)"
+        let stack = NSView(frame: NSRect(x: 0, y: 0, width: 280, height: 58))
+        stack.addSubview(title); stack.addSubview(minutes)
+        alert.accessoryView = stack
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let n = Double(minutes.stringValue)
+        let due = n.flatMap { $0 > 0 ? Date().addingTimeInterval($0 * 60) : nil }
+        tasks.add(title.stringValue, dueAt: due)
+        if due != nil { ReminderService.shared.requestPermission() }
+        machine.transition(to: .happy, resetAfter: 1.5)
+        showToast("Task saved")
+    }
+    @objc private func showTasks() {
+        let pending = tasks.tasks.filter { !$0.completed }
+        let alert = NSAlert()
+        alert.messageText = "DeskCat tasks"
+        if pending.isEmpty {
+            alert.informativeText = "All done! Click Add to create a task."
+            alert.addButton(withTitle: "Add")
+            alert.addButton(withTitle: "Close")
+            if alert.runModal() == .alertFirstButtonReturn { addTask() }
+            return
+        }
+        let labels = pending.prefix(20).enumerated().map { "\($0.offset + 1). \($0.element.title)" }
+        alert.informativeText = labels.joined(separator: "\n")
+        alert.addButton(withTitle: "Complete first")
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Close")
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            tasks.toggle(pending[0].id)
+            machine.transition(to: .happy, resetAfter: 1.5)
+        case .alertSecondButtonReturn: addTask()
+        default: break
+        }
+    }
+    @objc private func showMeetings() {
+        MeetingService.shared.upcoming { [weak self] events, error in
+            guard let self else { return }
+            let alert = NSAlert()
+            alert.messageText = "Upcoming meetings (48 hours)"
+            if let error { alert.informativeText = error }
+            else if let events, !events.isEmpty {
+                let fmt = DateFormatter()
+                fmt.dateStyle = .short
+                fmt.timeStyle = .short
+                alert.informativeText = events.map {
+                    "\(fmt.string(from: $0.startDate))  \($0.title ?? "Untitled")"
+                }.joined(separator: "\n")
+            } else { alert.informativeText = "No upcoming events." }
+            alert.addButton(withTitle: "OK")
+            alert.runModal()
+            self.machine.transition(to: .idle)
+        }
     }
 
-    private func urls(_ sender: NSDraggingInfo) -> [URL] {
+    private func fileURLs(_ sender: NSDraggingInfo) -> [URL] {
         (sender.draggingPasteboard.readObjects(forClasses: [NSURL.self],
             options: [.urlReadingFileURLsOnly: true]) as? [URL]) ?? []
     }
-    private func onBin(_ sender: NSDraggingInfo) -> Bool {
-        binHit.insetBy(dx: -7, dy: -7).contains(artworkPoint(convert(sender.draggingLocation, from: nil)))
+    private func overBin(_ sender: NSDraggingInfo) -> Bool {
+        binRect.insetBy(dx: -7, dy: -7).contains(convert(sender.draggingLocation, from: nil))
     }
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard !isProcessing, !urls(sender).isEmpty, onBin(sender) else { return [] }
-        if machine.state != .alert { machine.transition(to: .alert) }
-        return .copy
+        guard !processing, !fileURLs(sender).isEmpty, overBin(sender) else { return [] }
+        machine.transition(to: .alert)
+        return .move
     }
     override func draggingExited(_ sender: NSDraggingInfo?) {
-        if !isProcessing { machine.transition(to: .idle) }
+        if !processing { machine.transition(to: .idle) }
     }
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        guard !isProcessing, onBin(sender) else { return false }
-        let files = urls(sender)
-        guard !files.isEmpty else { return false }
+        guard !processing, overBin(sender) else { return false }
+        let urls = fileURLs(sender)
+        guard !urls.isEmpty else { return false }
         let alert = NSAlert()
-        alert.messageText = "Move to macOS Trash?"
-        alert.informativeText = "Move \(files.count) item(s) to Trash? This is not permanent deletion."
+        alert.messageText = "Move \(urls.count) item(s) to macOS Trash?"
+        alert.informativeText = "Files can normally be restored from Trash. This action is not permanent deletion."
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else {
             machine.transition(to: .idle)
             return false
         }
-        isProcessing = true
+        processing = true
         machine.transition(to: .carry)
-        let service = trashService
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let failures = files.compactMap { url -> String? in
-                switch service.moveToTrash(url) {
+        // Complete the visual arc first; then move to Trash and report actual outcome.
+        trashAnimationStart = Date()
+        trashCompletion = { [weak self] in
+            guard let self else { return }
+            self.machine.transition(to: .throwing)
+            let failures = urls.compactMap { url -> String? in
+                switch self.trashService.moveToTrash(url) {
                 case .success: return nil
                 case .failure(let error): return error.localizedDescription
                 }
             }
-            DispatchQueue.main.async { [weak self] in
-                guard let self else { return }
-                self.isProcessing = false
-                if failures.isEmpty {
-                    self.machine.transition(to: .throwing)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in
-                        self?.machine.transition(to: .happy, resetAfter: 1.3)
-                    }
-                } else {
-                    self.machine.transition(to: .error, resetAfter: 2)
-                    let alert = NSAlert()
-                    alert.messageText = "Some items could not be moved"
-                    alert.informativeText = failures.joined(separator: "\n")
-                    alert.runModal()
-                }
+            self.processing = false
+            if failures.isEmpty {
+                self.machine.transition(to: .happy, resetAfter: 2)
+                self.showToast("Moved to Trash")
+            } else {
+                self.machine.transition(to: .error, resetAfter: 3)
+                let warning = NSAlert()
+                warning.messageText = "Some files could not be moved"
+                warning.informativeText = failures.joined(separator: "\n")
+                warning.runModal()
             }
         }
         return true
