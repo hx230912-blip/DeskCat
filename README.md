@@ -2,38 +2,42 @@
 
 **A tiny pixel cat that gets things done on macOS.**
 
-DeskCat is an experimental, native macOS desktop helper. It stays in the corner while you work and will eventually animate file handling, reminders, and task completion.
+An experimental native macOS helper: a calm cat in your screen corner that reacts to file operations.
 
-## Current status: v0.1 scaffold (unverified)
+## Current status — early prototype, not yet verified on macOS
 
-This first commit is a **prototype**, not a finished pixel-art app. It uses emoji placeholders, a transparent floating panel, a menu bar item, and a Trash drop target with confirmation. No animation, task list, or meeting integration has been implemented yet.
+- Transparent floating AppKit panel and menu bar entry
+- Finder file URL drag target on the trash icon
+- Explicit confirmation before moving items to the **system Trash**
+- File work dispatched off the UI thread, with success/error feedback
+- Basic animation state machine using emoji placeholders (not pixel sprites yet)
 
-## Build on a Mac
+**No actual pixel-art animation, meeting reminders, task list, or local Mac build verification yet.**
 
-1. Install Xcode 15 or newer and its command-line tools.
-2. Clone this repository and run `swift run` from the project root, or open `Package.swift` in Xcode and run the `DeskCat` executable scheme.
-3. Look for the cat near the lower-right corner and the cat icon in the menu bar.
-4. **Test only with disposable files.** Drag a test file from Finder onto the trash-bin icon, then confirm the macOS Trash action.
+## Run locally
 
-The app has not yet been compiled or tested on macOS in this environment. File access may be affected by macOS permissions.
+1. Install Xcode 15+ on macOS 13+.
+2. Clone the repository.
+3. Open `Package.swift` in Xcode and run the `DeskCat` scheme, or try `swift run` in Terminal.
+4. Drag only **disposable test files** from Finder onto the bin icon, then confirm.
 
-## Design principles
-
-- Native SwiftUI + AppKit; SpriteKit animation planned.
-- Local-first, minimal permissions, no telemetry.
-- No permanent deletion: files go to macOS Trash.
-- Never delay actual file operations for cosmetic animations.
-- Calm by default, animated only on useful interactions.
+Note: Finder drag/drop, window placement, and file permissions require testing on a real Mac. The app is not signed or notarized. If you see a compile error, capture the full Xcode diagnostic for the next iteration.
 
 ## Roadmap
 
-- [x] Repository and prototype source structure
-- [ ] Verify build and drag/drop on macOS
-- [ ] Original pixel cat sprite sheets and animation state machine
-- [ ] Non-blocking Trash operation and accessible drop feedback
-- [ ] Local quick tasks and break reminders
-- [ ] Calendar reminders (opt-in)
+- [x] Initial Swift package and macOS app entry point
+- [x] File drop + confirmation + system Trash service
+- [x] Basic visual state coordinator
+- [ ] Validate compilation and drag/drop on macOS
+- [ ] Original orange-and-white pixel cat sprite sheets and SpriteKit animation
+- [ ] Non-blocking confirmation UI and detailed partial-failure feedback
+- [ ] Task checklist and break reminders
+- [ ] Optional calendar support
+
+## Principles
+
+Calm by default. Animate only when useful. Never permanently delete. Keep files local.
 
 ## License
 
-MIT for code. Future original artwork may carry a separate license.
+MIT applies to code. Future artwork may be separately licensed.
