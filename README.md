@@ -2,42 +2,37 @@
 
 **A tiny pixel cat that gets things done on macOS.**
 
-An experimental native macOS helper: a calm cat in your screen corner that reacts to file operations.
+DeskCat is an experimental native macOS desktop companion with a floating window and a Trash drop target.
 
-## Current status — early prototype, not yet verified on macOS
+## Build a double-clickable DeskCat.app
 
-- Transparent floating AppKit panel and menu bar entry
-- Finder file URL drag target on the trash icon
-- Explicit confirmation before moving items to the **system Trash**
-- File work dispatched off the UI thread, with success/error feedback
-- Basic animation state machine using emoji placeholders (not pixel sprites yet)
+Requirements: macOS 13+, Swift toolchain / Xcode Command Line Tools.
 
-**No actual pixel-art animation, meeting reminders, task list, or local Mac build verification yet.**
+Download or clone this repository. In Terminal:
 
-## Run locally
+```bash
+cd /path/to/DeskCat
+bash build-app.sh
+```
 
-1. Install Xcode 15+ on macOS 13+.
-2. Clone the repository.
-3. Open `Package.swift` in Xcode and run the `DeskCat` scheme, or try `swift run` in Terminal.
-4. Drag only **disposable test files** from Finder onto the bin icon, then confirm.
+This builds a release executable and creates **`dist/DeskCat.app`**. Finder will reveal it. Double-click to launch. You can optionally drag it into Applications. When you change the code, rerun the script and replace the older app.
 
-Note: Finder drag/drop, window placement, and file permissions require testing on a real Mac. The app is not signed or notarized. If you see a compile error, capture the full Xcode diagnostic for the next iteration.
+This is a **local development build**, not a notarized public release. The build has not yet been tested on your Mac. Quit an older running DeskCat before launching the new version.
 
-## Roadmap
+## Current features
 
-- [x] Initial Swift package and macOS app entry point
-- [x] File drop + confirmation + system Trash service
-- [x] Basic visual state coordinator
-- [ ] Validate compilation and drag/drop on macOS
-- [ ] Original orange-and-white pixel cat sprite sheets and SpriteKit animation
-- [ ] Non-blocking confirmation UI and detailed partial-failure feedback
-- [ ] Task checklist and break reminders
-- [ ] Optional calendar support
+- Transparent floating AppKit window with programmatically drawn pixel-art cat, desk and bin
+- Move the panel by dragging
+- Click the cat for quick actions (Calendar, Downloads, current clipboard text)
+- Drag Finder test files onto the bin, confirm moving them to macOS Trash
+- Basic visual feedback and animation-state scaffold
 
-## Principles
+Meeting notifications, clipboard history, a full task manager, and polished sprite animations are not yet implemented.
 
-Calm by default. Animate only when useful. Never permanently delete. Keep files local.
+## Safety
+
+Use disposable files to test Trash actions. The app does not permanently delete files. There is no automatic update mechanism yet.
 
 ## License
 
-MIT applies to code. Future artwork may be separately licensed.
+MIT for code; future artwork may use a separate license.
