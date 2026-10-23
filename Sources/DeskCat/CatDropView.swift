@@ -333,38 +333,41 @@ final class CatDropView: NSView {
         guard !processing, overBin(sender) else { return false }
         let urls = fileURLs(sender)
         guard !urls.isEmpty else { return false }
-        let alert = NSAlert()
-        alert.messageText = "Move \(urls.count) item(s) to macOS Trash?"
-        alert.informativeText = "Files can normally be restored from Trash. This action is not permanent deletion."
-        alert.addButton(withTitle: "Move to Trash")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else {
-            machine.transition(to: .idle)
-            return false
-        }
+        // Dropping a file onto the bin is explicit consent to move it to macOS Trash.
         processing = true
+        trashTargets = urls
+        trashPhase = 0
+        trashPhaseStart = Date()
         setAnimation("stand")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.55) { [weak self] in
             guard let self, self.processing else { return }
+            self.trashPhase = 1
+            self.trashPhaseStart = Date()
             self.setAnimation("walk")
-            self.trashJourneyStarted = Date()
         }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.45) { [weak self] in
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.35) { [weak self] in
             guard let self, self.processing else { return }
+            self.trashPhase = 2
+            self.setAnimation("carry")
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.85) { [weak self] in
+            guard let self, self.processing else { return }
+            self.trashPhase = 3
             self.setAnimation("throw")
             self.trashAnimationStart = Date()
         }
         trashCompletion = { [weak self] in
             guard let self else { return }
-            self.machine.transition(to: .throwing)
-            let failures = urls.compactMap { url -> String? in
+            let failures = self.trashTargets.compactMap { url -> String? in
                 switch self.trashService.moveToTrash(url) {
                 case .success: return nil
                 case .failure(let error): return error.localizedDescription
                 }
             }
+            self.trashTargets = []
             self.processing = false
-            self.trashJourneyStarted = nil
+            self.trashPhase = 0
+            self.returnStarted = Date()
             if failures.isEmpty {
                 self.setAnimation("walkback")
                 self.busyUntil = Date().addingTimeInterval(2)
