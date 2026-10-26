@@ -8,6 +8,13 @@ final class ChefCatView: NSView {
     private let trashService = TrashService()
     private var clock: Timer?
     private var spriteCache: [String: NSImage] = [:]
+    private var missingSprites = Set<String>()
+    private var previousAnimationState = ""
+    private var animationStarted = Date()
+    private let animationFrameCounts: [String: Int] = [
+        "idle": 4, "walk": 8, "sleep": 6, "cook": 8,
+        "carry": 8, "celebrate": 8
+    ]
     private var started = Date()
     private var lastCount = 0
     private var celebrationUntil = Date.distantPast
@@ -61,18 +68,35 @@ final class ChefCatView: NSView {
         let celebrating = now < celebrationUntil
         let deleting = now < deletionUntil
         let sleep = !cooking && !celebrating && !deleting && Int(t / 13) % 4 == 2
-        let bob = (cooking || celebrating) ? CGFloat(Int(t * 3) % 2) * 2 : 0
-        // Only the props and character are drawn; the rest remains transparent.
-        if cooking { drawStove(time: t) }
+        let state = deleting ? "carry" :
+            (celebrating ? "celebrate" :
+            (cooking ? "cook" :
+            (sleep ? "sleep" : (Int(t / 8) % 3 == 1 ? "walk" : "idle"))))
+        if state != previousAnimationState {
+            previousAnimationState = state
+            animationStarted = now
+        }
+        let elapsed = now.timeIntervalSince(animationStarted)
+        let frameCount = animationFrameCounts[state] ?? 1
+        let frameRate: Double = state == "sleep" ? 2 : (state == "cook" ? 6 : 8)
+        let frame = Int(elapsed * frameRate) % frameCount
+        let walkOffset: CGFloat = state == "walk" ? CGFloat(sin(elapsed * 1.7)) * 16 : 0
+        let bob: CGFloat = (state == "cook" || state == "celebrate") ? CGFloat(frame % 2) * 2 : 0
+        // The cat is behind the counter when cooking, in front when roaming.
+        if cooking {
+            drawSprite(state: state, frame: frame,
+                       x: (deleting ? 125 : 70) + walkOffset, y: 48 + bob)
+            drawStove(time: t)
+        } else {
+            drawSprite(state: state, frame: frame,
+                       x: (deleting ? 125 : 80) + walkOffset, y: 18 + bob)
+        }
         drawBin(open: deleting)
-        let state = deleting ? "carry" : (celebrating ? "celebrate" : (cooking ? "cook" : (sleep ? "sleep" : (Int(t / 8) % 3 == 1 ? "walk" : "idle"))))
-        let walkOffset: CGFloat = state == "walk" ? CGFloat(Int(t * 9) % 22) - 11 : 0
-        drawSprite(state: state, frame: Int(t * (state == "cook" ? 3 : 5)) % 2,
-                   x: (deleting ? 125 : (cooking ? 70 : 80)) + walkOffset,
-                   y: (cooking ? 48 : 18) + bob)
         if deleting {
             let progress = CGFloat(min(1, now.timeIntervalSince(deletionStarted) / 1.4))
-            if progress < 0.9 { drawPaper(x: 166 + progress * 66, y: 86 - progress * 33) }
+            if progress < 0.9 {
+                drawPaper(x: 166 + progress * 66, y: 86 - progress * 33)
+            }
         }
         if sleep { label("z z Z", x: 142, y: 134, size: 15, color: .systemBlue) }
         if celebrating { label("♥ ✨", x: 145, y: 150, size: 18, color: .systemOrange) }
@@ -80,21 +104,31 @@ final class ChefCatView: NSView {
     }
 
     private func drawSprite(state: String, frame: Int, x: CGFloat, y: CGFloat) {
-        let index = ["walk", "cook", "celebrate"].contains(state) ? frame : 0
-        let key = "cat_" + state + "_" + String(format: "%02d", index)
-        if spriteCache[key] == nil {
+        // Look up a complete animation sequence, falling back to the older
+        // two-frame sprites until the matching art is installed.
+        let candidates = [
+            "cat_\\(state)_\\(String(format: "%02d", frame))",
+            "cat_\\(state)_\\(String(format: "%02d", frame % 2))",
+            "cat_\\(state)_00",
+            "cat_idle_00"
+        ]
+        var selected: NSImage?
+        for key in candidates {
+            if let cached = spriteCache[key] { selected = cached; break }
+            if missingSprites.contains(key) { continue }
             let url = Bundle.module.url(forResource: key, withExtension: "png", subdirectory: "Sprites")
                 ?? Bundle.module.url(forResource: key, withExtension: "png")
-            if let url, let image = NSImage(contentsOf: url) { spriteCache[key] = image }
+            if let url, let image = NSImage(contentsOf: url) {
+                spriteCache[key] = image
+                selected = image
+                break
+            }
+            missingSprites.insert(key)
         }
-        guard let image = spriteCache[key] else {
-            // Missing sprites should not block Reminders or Trash features.
-            label("🐈‍⬛", x: x, y: y + 35, size: 60, color: .labelColor)
-            return
-        }
+        guard let image = selected else { return }
         NSGraphicsContext.current?.imageInterpolation = .none
-        image.draw(in: NSRect(x: x, y: y, width: 118, height: 118),
-                   from: .zero, operation: .sourceOver, fraction: 1)
+        let target = NSRect(x: x, y: y, width: 118, height: 118)
+        image.draw(in: target, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     private func drawStove(time: Double) {
