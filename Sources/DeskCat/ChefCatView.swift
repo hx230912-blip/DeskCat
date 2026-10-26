@@ -107,9 +107,9 @@ final class ChefCatView: NSView {
         // Look up a complete animation sequence, falling back to the older
         // two-frame sprites until the matching art is installed.
         let candidates = [
-            "cat_\\(state)_\\(String(format: "%02d", frame))",
-            "cat_\\(state)_\\(String(format: "%02d", frame % 2))",
-            "cat_\\(state)_00",
+            "cat_" + state + "_" + String(format: "%02d", frame),
+            "cat_" + state + "_" + String(format: "%02d", frame % 2),
+            "cat_" + state + "_00",
             "cat_idle_00"
         ]
         var selected: NSImage?
