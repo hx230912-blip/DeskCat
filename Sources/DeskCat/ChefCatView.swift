@@ -86,9 +86,9 @@ final class ChefCatView: NSView {
         if cooking && !deleting && !celebrating {
             drawSprite(state: state, frame: frame,
                        x: (deleting ? 125 : 70) + walkOffset, y: 48 + bob)
-            drawStove(time: t, active: true)
+            // Cooking sprites include the stove and pan; avoid drawing a second stove.
         } else {
-            drawStove(time: t, active: cooking)
+            drawStove(time: t, active: false)
             drawSprite(state: state, frame: frame,
                        x: (deleting ? 125 : 80) + walkOffset, y: 18 + bob)
         }
