@@ -18,7 +18,7 @@ final class ChefCatView: NSView {
     private var feedbackUntil = Date.distantPast
     private var movingStart: NSPoint?
     private var windowStart: NSPoint?
-    private let bin = NSRect(x: 218, y: 12, width: 47, height: 62)
+    private let bin = NSRect(x: 225, y: 18, width: 48, height: 65)
 
     override var isFlipped: Bool { false }
     override init(frame: NSRect) {
@@ -63,15 +63,17 @@ final class ChefCatView: NSView {
         let sleep = !cooking && !celebrating && !deleting && Int(t / 13) % 4 == 2
         let bob = (cooking || celebrating) ? CGFloat(Int(t * 3) % 2) * 2 : 0
         // Only the props and character are drawn; the rest remains transparent.
-        drawBin()
         if cooking { drawStove(time: t) }
+        drawBin(open: deleting)
         let state = deleting ? "carry" : (celebrating ? "celebrate" : (cooking ? "cook" : (sleep ? "sleep" : (Int(t / 8) % 3 == 1 ? "walk" : "idle"))))
         let walkOffset: CGFloat = state == "walk" ? CGFloat(Int(t * 9) % 22) - 11 : 0
         drawSprite(state: state, frame: Int(t * (state == "cook" ? 3 : 5)) % 2,
-                   x: (deleting ? 112 : (cooking ? 75 : 79)) + walkOffset,
-                   y: (cooking ? 42 : 20) + bob)
-        if deleting { drawPaper(x: 158 + CGFloat(min(1, now.timeIntervalSince(deletionStarted))) * 62,
-                                y: 79 - CGFloat(min(1, now.timeIntervalSince(deletionStarted))) * 27) }
+                   x: (deleting ? 125 : (cooking ? 70 : 80)) + walkOffset,
+                   y: (cooking ? 48 : 18) + bob)
+        if deleting {
+            let progress = CGFloat(min(1, now.timeIntervalSince(deletionStarted) / 1.4))
+            if progress < 0.9 { drawPaper(x: 166 + progress * 66, y: 86 - progress * 33) }
+        }
         if sleep { label("z z Z", x: 142, y: 134, size: 15, color: .systemBlue) }
         if celebrating { label("♥ ✨", x: 145, y: 150, size: 18, color: .systemOrange) }
         if now < feedbackUntil { label(feedback, x: 18, y: 170, size: 11, color: .labelColor) }
@@ -91,34 +93,67 @@ final class ChefCatView: NSView {
             return
         }
         NSGraphicsContext.current?.imageInterpolation = .none
-        image.draw(in: NSRect(x: x, y: y, width: 122, height: 122),
+        image.draw(in: NSRect(x: x, y: y, width: 118, height: 118),
                    from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     private func drawStove(time: Double) {
-        let wood = NSColor(calibratedRed: 0.48, green: 0.29, blue: 0.18, alpha: 1)
-        rect(22, 14, 176, 33, outline)
-        rect(27, 19, 166, 23, wood)
-        rect(30, 44, 162, 9, NSColor(calibratedRed: 0.69, green: 0.47, blue: 0.31, alpha: 1))
-        rect(48, 51, 110, 12, outline)
-        rect(58, 63, 90, 6, .darkGray)
-        rect(69, 69, 70, 8, outline)
-        rect(77, 77, 55, 4, .gray)
-        for i in 0..<5 {
-            let flicker = CGFloat(Int(time * 7 + Double(i)) % 3) * 3
-            rect(81 + CGFloat(i) * 10, 53, 6, 12 + flicker, .systemOrange)
-            rect(83 + CGFloat(i) * 10, 55, 3, 6 + flicker, .systemYellow)
+        // Compact countertop and gas burner; transparent everywhere else.
+        let edge = NSColor(calibratedRed: 0.20, green: 0.14, blue: 0.18, alpha: 1)
+        let wood = NSColor(calibratedRed: 0.57, green: 0.32, blue: 0.18, alpha: 1)
+        let highlight = NSColor(calibratedRed: 0.85, green: 0.57, blue: 0.34, alpha: 1)
+        rect(15, 20, 185, 32, edge)
+        rect(20, 25, 175, 23, wood)
+        rect(20, 44, 175, 6, highlight)
+        rect(23, 29, 54, 3, highlight.withAlphaComponent(0.55))
+        // Stove fascia and control knobs.
+        rect(55, 49, 96, 29, edge)
+        rect(60, 53, 86, 20, NSColor(calibratedWhite: 0.28, alpha: 1))
+        for x in stride(from: CGFloat(74), through: CGFloat(128), by: 26) {
+            rect(x, 56, 11, 11, edge)
+            rect(x + 3, 60, 5, 5, .gray)
         }
-        rect(157, 45, 21, 26, .white)
-        for i in 0..<3 { rect(161 + CGFloat(i) * 6, 47, 3, 20, .systemRed) }
+        // Frying pan and handle.
+        rect(57, 91, 93, 8, edge)
+        rect(65, 84, 79, 13, NSColor(calibratedWhite: 0.13, alpha: 1))
+        rect(145, 91, 23, 5, edge)
+        rect(67, 96, 72, 3, NSColor(calibratedWhite: 0.48, alpha: 1))
+        // Food bits jump a little, rather than covering the desktop with effects.
+        for i in 0..<6 {
+            let x = CGFloat(75 + i * 10)
+            let jump = CGFloat(Int(time * 4 + Double(i)) % 3) * 3
+            rect(x, 99 + jump, 5, 4, i.isMultiple(of: 2) ? .systemGreen : .systemOrange)
+        }
+        for i in 0..<6 {
+            let x = CGFloat(74 + i * 10)
+            let flicker = CGFloat(Int(time * 8 + Double(i)) % 3) * 3
+            rect(x, 78, 7, 8 + flicker, .systemOrange)
+            rect(x + 2, 80, 3, 5 + flicker, .systemYellow)
+        }
+        // Small towel and spice bottle give the stove a friendly silhouette.
+        rect(174, 51, 20, 29, .white)
+        for i in 0..<3 { rect(178 + CGFloat(i * 5), 53, 2, 25, .systemRed) }
+        rect(23, 53, 15, 27, edge)
+        rect(25, 57, 11, 19, NSColor(calibratedRed: 0.31, green: 0.52, blue: 0.29, alpha: 1))
+        rect(27, 78, 7, 4, .systemYellow)
     }
-    private func drawBin() {
-        rect(218, 12, 47, 55, outline)
-        rect(223, 17, 37, 44, NSColor(calibratedWhite: 0.31, alpha: 1))
-        rect(213, 64, 57, 9, outline)
-        rect(221, 73, 40, 5, .gray)
-        rect(234, 38, 15, 3, .white)
-        rect(240, 32, 3, 15, .white)
+
+    private func drawBin(open: Bool) {
+        let edge = NSColor(calibratedRed: 0.19, green: 0.15, blue: 0.22, alpha: 1)
+        let metal = NSColor(calibratedRed: 0.38, green: 0.38, blue: 0.46, alpha: 1)
+        rect(227, 18, 44, 51, edge)
+        rect(232, 23, 34, 42, metal)
+        rect(237, 26, 4, 34, .gray)
+        rect(257, 26, 4, 34, .gray)
+        if open {
+            rect(217, 80, 54, 8, edge)
+            rect(220, 85, 47, 3, metal)
+        } else {
+            rect(222, 69, 54, 9, edge)
+            rect(228, 77, 40, 5, metal)
+        }
+        // Recycle mark (the bin is a drop target, actual action is Move to Trash).
+        label("↻", x: 239, y: 38, size: 19, color: .white)
     }
     private func drawPaper(x: CGFloat, y: CGFloat) {
         rect(x, y, 18, 22, outline)
