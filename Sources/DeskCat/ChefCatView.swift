@@ -83,11 +83,12 @@ final class ChefCatView: NSView {
         let walkOffset: CGFloat = state == "walk" ? CGFloat(sin(elapsed * 1.7)) * 16 : 0
         let bob: CGFloat = (state == "cook" || state == "celebrate") ? CGFloat(frame % 2) * 2 : 0
         // The cat is behind the counter when cooking, in front when roaming.
-        if cooking {
+        if cooking && !deleting && !celebrating {
             drawSprite(state: state, frame: frame,
                        x: (deleting ? 125 : 70) + walkOffset, y: 48 + bob)
-            drawStove(time: t)
+            drawStove(time: t, active: true)
         } else {
+            drawStove(time: t, active: cooking)
             drawSprite(state: state, frame: frame,
                        x: (deleting ? 125 : 80) + walkOffset, y: 18 + bob)
         }
@@ -131,7 +132,7 @@ final class ChefCatView: NSView {
         image.draw(in: target, from: .zero, operation: .sourceOver, fraction: 1)
     }
 
-    private func drawStove(time: Double) {
+    private func drawStove(time: Double, active: Bool) {
         // Compact countertop and gas burner; transparent everywhere else.
         let edge = NSColor(calibratedRed: 0.20, green: 0.14, blue: 0.18, alpha: 1)
         let wood = NSColor(calibratedRed: 0.57, green: 0.32, blue: 0.18, alpha: 1)
@@ -153,6 +154,7 @@ final class ChefCatView: NSView {
         rect(145, 91, 23, 5, edge)
         rect(67, 96, 72, 3, NSColor(calibratedWhite: 0.48, alpha: 1))
         // Food bits jump a little, rather than covering the desktop with effects.
+        if active {
         for i in 0..<6 {
             let x = CGFloat(75 + i * 10)
             let jump = CGFloat(Int(time * 4 + Double(i)) % 3) * 3
@@ -163,6 +165,7 @@ final class ChefCatView: NSView {
             let flicker = CGFloat(Int(time * 8 + Double(i)) % 3) * 3
             rect(x, 78, 7, 8 + flicker, .systemOrange)
             rect(x + 2, 80, 3, 5 + flicker, .systemYellow)
+        }
         }
         // Small towel and spice bottle give the stove a friendly silhouette.
         rect(174, 51, 20, 29, .white)
