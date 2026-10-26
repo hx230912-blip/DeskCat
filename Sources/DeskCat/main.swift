@@ -7,6 +7,7 @@ struct DeskCatApp: App {
     var body: some Scene { Settings { Text("DeskCat").padding() } }
 }
 
+@MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var panel: NSPanel?
     private var statusItem: NSStatusItem?
@@ -43,8 +44,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: NSWindow.didMoveNotification, object: panel)
     }
 
-    func menuNeedsUpdate(_ menu: NSMenu) {
-        rebuildMenu()
+    nonisolated func menuNeedsUpdate(_ menu: NSMenu) {
+        Task { @MainActor [weak self] in self?.rebuildMenu() }
     }
 
     private func rebuildMenu() {
