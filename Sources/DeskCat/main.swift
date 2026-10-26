@@ -7,25 +7,19 @@ struct DeskCatApp: App {
     var body: some Scene { Settings { Text("DeskCat").padding() } }
 }
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var panel: NSPanel?
     private var statusItem: NSStatusItem?
+    private let menu = NSMenu()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
-        let menu = NSMenu()
-        for (title, selector) in [
-            ("Show DeskCat", #selector(showCat)),
-            ("Reset position", #selector(resetPosition)),
-            ("Quit DeskCat", #selector(quit))
-        ] {
-            let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
-            item.target = self
-            menu.addItem(item)
-        }
+        menu.delegate = self
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         statusItem?.button?.title = "🐈"
         statusItem?.menu = menu
+        rebuildMenu()
+        AppleRemindersBridge.shared.start()
 
         let size = NSSize(width: 256, height: 176)
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
@@ -49,6 +43,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWindow.didMoveNotification, object: panel)
     }
 
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        rebuildMenu()
+    }
+
+    private func rebuildMenu() {
+        menu.removeAllItems()
+        for (title, selector) in [
+            ("Show DeskCat", #selector(showCat)),
+            ("Reset position", #selector(resetPosition)),
+            ("Refresh Reminders", #selector(refreshReminders)),
+            ("Open Reminders", #selector(openReminders)),
+            ("Quit DeskCat", #selector(quit))
+        ] {
+            let item = NSMenuItem(title: title, action: selector, keyEquivalent: "")
+            item.target = self
+            menu.addItem(item)
+        }
+        AppleRemindersBridge.shared.populateMenu(menu)
+    }
+
+    @objc private func refreshReminders() { AppleRemindersBridge.shared.refresh() }
+    @objc private func openReminders() {
+        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/System/Applications/Reminders.app"),
+                                           configuration: NSWorkspace.OpenConfiguration())
+    }
     private func positionAtCorner() {
         guard let panel, let screen = NSScreen.main else { return }
         let frame = screen.visibleFrame
