@@ -15,7 +15,7 @@ final class ChefCatView: NSView {
     private var previousSpriteState = "idle"
     private var previousSpriteFrame = 0
     private let animationFrameCounts: [String: Int] = [
-        "idle": 4, "walk": 8, "sleep": 6, "cook": 8,
+        "idle": 4, "walk": 12, "sleep": 6, "cook": 8,
         "carry": 8, "celebrate": 8
     ]
     private var started = Date()
@@ -119,7 +119,7 @@ final class ChefCatView: NSView {
     private func currentFrame(for state: String, elapsed: TimeInterval) -> Int {
         let durations: [Double] = switch state {
         case "sleep": [0.28, 0.32, 0.36, 0.36, 0.32, 0.28]
-        case "walk": [0.10, 0.12, 0.10, 0.12, 0.10, 0.12, 0.10, 0.12]
+        case "walk": [0.10, 0.09, 0.10, 0.12, 0.10, 0.09, 0.10, 0.09, 0.10, 0.12, 0.10, 0.09]
         case "cook": [0.15, 0.12, 0.11, 0.14, 0.15, 0.12, 0.11, 0.14]
         case "carry": [0.12, 0.12, 0.16, 0.12, 0.12, 0.16, 0.12, 0.12]
         case "celebrate": [0.12, 0.10, 0.10, 0.16, 0.12, 0.10, 0.10, 0.16]
