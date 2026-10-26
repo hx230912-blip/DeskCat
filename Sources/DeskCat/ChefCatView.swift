@@ -79,7 +79,7 @@ final class ChefCatView: NSView {
 
     private func drawSprite(state: String, frame: Int, x: CGFloat, y: CGFloat) {
         let index = ["walk", "cook", "celebrate"].contains(state) ? frame : 0
-        let key = "cat_\\(state)_\\(String(format: "%02d", index))"
+        let key = "cat_\(state)_\(String(format: \"%02d\", index))"
         if spriteCache[key] == nil {
             let url = Bundle.module.url(forResource: key, withExtension: "png", subdirectory: "Sprites")
                 ?? Bundle.module.url(forResource: key, withExtension: "png")
