@@ -28,6 +28,7 @@ final class ChefCatView: NSView {
     private var feedbackUntil = Date.distantPast
     private var movingStart: NSPoint?
     private var windowStart: NSPoint?
+    private let artScale: CGFloat = 0.85
     private let bin = NSRect(x: 225, y: 18, width: 48, height: 65)
 
     override var isFlipped: Bool { false }
@@ -65,6 +66,12 @@ final class ChefCatView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         super.draw(dirtyRect)
+        // Uniformly scale the entire transparent scene, including the cat,
+        // stove, bin, effects and labels. Keep all original art coordinates.
+        NSGraphicsContext.saveGraphicsState()
+        defer { NSGraphicsContext.restoreGraphicsState() }
+        let scale = AffineTransform(scale: artScale)
+        NSAffineTransform(transform: scale).concat()
         let now = Date()
         let t = now.timeIntervalSince(started)
         let cooking = pending > 0
@@ -269,7 +276,9 @@ final class ChefCatView: NSView {
     }
     private func validDrop(_ info: NSDraggingInfo) -> Bool {
         !busy && !urls(info).isEmpty &&
-        bin.insetBy(dx: -10, dy: -10).contains(convert(info.draggingLocation, from: nil))
+        bin.insetBy(dx: -10, dy: -10).contains(NSPoint(
+            x: convert(info.draggingLocation, from: nil).x / artScale,
+            y: convert(info.draggingLocation, from: nil).y / artScale))
     }
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { draggingUpdated(sender) }
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
