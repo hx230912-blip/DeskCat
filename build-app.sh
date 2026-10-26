@@ -51,7 +51,7 @@ cat > "$STAGING/Contents/Info.plist" <<'PLIST'
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSHighResolutionCapable</key><true/>
-  <key>NSCalendarsUsageDescription</key><string>DeskCat displays upcoming meetings with permission.</string>
+  <key>NSCalendarsUsageDescription</key><string>DeskCat displays upcoming meetings with permission.</string>\n  <key>NSRemindersUsageDescription</key><string>DeskCat reads today\x27s Reminders to show your daily tasks and send optional notifications.</string>\n  <key>NSRemindersFullAccessUsageDescription</key><string>DeskCat reads today\x27s Reminders to show your daily tasks and send optional notifications.</string>
 </dict>
 </plist>
 PLIST
