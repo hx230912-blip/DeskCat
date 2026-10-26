@@ -7,6 +7,7 @@ final class ChefCatView: NSView {
     private let bridge = AppleRemindersBridge.shared
     private let trashService = TrashService()
     private var clock: Timer?
+    private var spriteCache: [String: NSImage] = [:]
     private var started = Date()
     private var lastCount = 0
     private var celebrationUntil = Date.distantPast
@@ -64,8 +65,11 @@ final class ChefCatView: NSView {
         // Only the props and character are drawn; the rest remains transparent.
         drawBin()
         if cooking { drawStove(time: t) }
-        drawCat(x: deleting ? 122 : (cooking ? 75 : 85), y: cooking ? 46 + bob : 22 + bob,
-                sleeping: sleep, cooking: cooking, celebrating: celebrating, deleting: deleting, time: t)
+        let state = deleting ? "carry" : (celebrating ? "celebrate" : (cooking ? "cook" : (sleep ? "sleep" : (Int(t / 8) % 3 == 1 ? "walk" : "idle"))))
+        let walkOffset: CGFloat = state == "walk" ? CGFloat(Int(t * 9) % 22) - 11 : 0
+        drawSprite(state: state, frame: Int(t * (state == "cook" ? 3 : 5)) % 2,
+                   x: (deleting ? 112 : (cooking ? 75 : 79)) + walkOffset,
+                   y: (cooking ? 42 : 20) + bob)
         if deleting { drawPaper(x: 158 + CGFloat(min(1, now.timeIntervalSince(deletionStarted))) * 62,
                                 y: 79 - CGFloat(min(1, now.timeIntervalSince(deletionStarted))) * 27) }
         if sleep { label("z z Z", x: 142, y: 134, size: 15, color: .systemBlue) }
@@ -73,51 +77,22 @@ final class ChefCatView: NSView {
         if now < feedbackUntil { label(feedback, x: 18, y: 170, size: 11, color: .labelColor) }
     }
 
-    private func drawCat(x: CGFloat, y: CGFloat, sleeping: Bool, cooking: Bool,
-                         celebrating: Bool, deleting: Bool, time: Double) {
-        let s: CGFloat = 4
-        let baseX = x, baseY = y
-        func p(_ x: Int, _ y: Int, _ w: Int, _ h: Int, _ c: NSColor) {
-            rect(baseX + CGFloat(x) * s, baseY + CGFloat(y) * s, CGFloat(w) * s, CGFloat(h) * s, c)
+    private func drawSprite(state: String, frame: Int, x: CGFloat, y: CGFloat) {
+        let index = ["walk", "cook", "celebrate"].contains(state) ? frame : 0
+        let key = "cat_\\(state)_\\(String(format: "%02d", index))"
+        if spriteCache[key] == nil {
+            let url = Bundle.module.url(forResource: key, withExtension: "png", subdirectory: "Sprites")
+                ?? Bundle.module.url(forResource: key, withExtension: "png")
+            if let url, let image = NSImage(contentsOf: url) { spriteCache[key] = image }
         }
-        // Tail and body, outlined in dark pixels.
-        p(22, 5, 5, 4, outline); p(24, 8, 3, 7, outline)
-        p(23, 9, 3, 5, fur)
-        p(5, 3, 19, 13, outline); p(6, 4, 17, 11, fur)
-        p(7, 4, 4, 4, cream); p(17, 3, 4, 4, cream)
-        p(3, 12, 20, 16, outline); p(4, 13, 18, 14, fur)
-        p(6, 12, 11, 7, cream)
-        // Oversized white chef hat, pink-shadowed folds.
-        p(4, 27, 18, 4, outline)
-        p(2, 31, 22, 10, outline); p(3, 32, 20, 8, cream)
-        p(6, 40, 6, 3, outline); p(11, 41, 8, 3, outline)
-        p(7, 34, 2, 5, NSColor(calibratedRed: 0.86, green: 0.77, blue: 0.82, alpha: 1))
-        p(17, 33, 2, 6, NSColor(calibratedRed: 0.86, green: 0.77, blue: 0.82, alpha: 1))
-        p(5, 27, 16, 3, .white)
-        // Ears, eyes, cheeks, pink nose.
-        p(4, 24, 4, 5, outline); p(18, 24, 4, 5, outline)
-        p(5, 25, 2, 3, lightFur); p(19, 25, 2, 3, lightFur)
-        if !sleeping {
-            p(8, 21, 2, 3, outline); p(17, 21, 2, 3, outline)
-            p(8, 23, 1, 1, .white); p(17, 23, 1, 1, .white)
-        } else {
-            p(8, 21, 3, 1, outline); p(16, 21, 3, 1, outline)
+        guard let image = spriteCache[key] else {
+            // Missing sprites should not block Reminders or Trash features.
+            label("🐈‍⬛", x: x, y: y + 35, size: 60, color: .labelColor)
+            return
         }
-        p(10, 18, 2, 2, lightFur); p(16, 18, 2, 2, lightFur)
-        p(13, 19, 2, 2, .systemPink)
-        p(12, 17, 4, 1, outline)
-        // Chef's spoon bobs while cooking.
-        if cooking {
-            p(0, 10, 5, 5, fur)
-            let offset = Int(time * 4) % 2
-            p(1, 16 + offset, 1, 12, outline)
-            p(0, 27 + offset, 3, 4, NSColor.brown)
-        } else if celebrating {
-            p(0, 15, 5, 4, fur)
-            p(22, 17, 4, 4, fur)
-        } else if deleting {
-            p(21, 13, 5, 4, cream)
-        }
+        NSGraphicsContext.current?.imageInterpolation = .none
+        image.draw(in: NSRect(x: x, y: y, width: 122, height: 122),
+                   from: .zero, operation: .sourceOver, fraction: 1)
     }
 
     private func drawStove(time: Double) {
