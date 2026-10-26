@@ -22,7 +22,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
         AppleRemindersBridge.shared.start()
 
-        let size = NSSize(width: 256, height: 176)
+        let size = NSSize(width: 280, height: 196)
         let panel = NSPanel(contentRect: NSRect(origin: .zero, size: size),
                             styleMask: [.borderless, .nonactivatingPanel],
                             backing: .buffered, defer: false)
@@ -31,7 +31,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         panel.hasShadow = false
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        panel.contentView = CatDropView(frame: NSRect(origin: .zero, size: size))
+        panel.contentView = ChefCatView(frame: NSRect(origin: .zero, size: size))
         self.panel = panel
         if let x = UserDefaults.standard.object(forKey: "deskcat.x") as? Double,
            let y = UserDefaults.standard.object(forKey: "deskcat.y") as? Double {
