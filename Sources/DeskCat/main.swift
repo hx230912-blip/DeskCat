@@ -65,8 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func refreshReminders() { AppleRemindersBridge.shared.refresh() }
     @objc private func openReminders() {
-        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/System/Applications/Reminders.app"),
-                                           configuration: NSWorkspace.OpenConfiguration())
+        NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Reminders.app"))
     }
     private func positionAtCorner() {
         guard let panel, let screen = NSScreen.main else { return }
