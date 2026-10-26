@@ -11,6 +11,9 @@ final class ChefCatView: NSView {
     private var missingSprites = Set<String>()
     private var previousAnimationState = ""
     private var animationStarted = Date()
+    private var transitionStarted = Date.distantPast
+    private var previousSpriteState = "idle"
+    private var previousSpriteFrame = 0
     private let animationFrameCounts: [String: Int] = [
         "idle": 4, "walk": 8, "sleep": 6, "cook": 8,
         "carry": 8, "celebrate": 8
@@ -73,23 +76,25 @@ final class ChefCatView: NSView {
             (cooking ? "cook" :
             (sleep ? "sleep" : (Int(t / 8) % 3 == 1 ? "walk" : "idle"))))
         if state != previousAnimationState {
+            previousSpriteState = previousAnimationState.isEmpty ? state : previousAnimationState
+            previousSpriteFrame = currentFrame(for: previousSpriteState, elapsed: now.timeIntervalSince(animationStarted))
+            transitionStarted = now
             previousAnimationState = state
             animationStarted = now
         }
         let elapsed = now.timeIntervalSince(animationStarted)
         let frameCount = animationFrameCounts[state] ?? 1
-        let frameRate: Double = state == "sleep" ? 2 : (state == "cook" ? 6 : 8)
-        let frame = Int(elapsed * frameRate) % frameCount
+        let frame = currentFrame(for: state, elapsed: elapsed) % frameCount
         let walkOffset: CGFloat = state == "walk" ? CGFloat(sin(elapsed * 1.7)) * 16 : 0
-        let bob: CGFloat = (state == "cook" || state == "celebrate") ? CGFloat(frame % 2) * 2 : 0
+        let bob: CGFloat = (state == "cook" || state == "celebrate") ? CGFloat(sin(elapsed * 8)) * 1.2 : 0
         // The cat is behind the counter when cooking, in front when roaming.
         if cooking && !deleting && !celebrating {
-            drawSprite(state: state, frame: frame,
-                       x: (deleting ? 125 : 70) + walkOffset, y: 48 + bob)
+            drawAnimatedSprite(state: state, frame: frame, now: now,
+                       x: 70 + walkOffset, y: 48 + bob)
             // Cooking sprites include the stove and pan; avoid drawing a second stove.
         } else {
             drawStove(time: t, active: false)
-            drawSprite(state: state, frame: frame,
+            drawAnimatedSprite(state: state, frame: frame, now: now,
                        x: (deleting ? 125 : 80) + walkOffset, y: 18 + bob)
         }
         drawBin(open: deleting)
@@ -104,7 +109,35 @@ final class ChefCatView: NSView {
         if now < feedbackUntil { label(feedback, x: 18, y: 170, size: 11, color: .labelColor) }
     }
 
-    private func drawSprite(state: String, frame: Int, x: CGFloat, y: CGFloat) {
+    private func currentFrame(for state: String, elapsed: TimeInterval) -> Int {
+        let durations: [Double] = switch state {
+        case "sleep": [0.28, 0.32, 0.36, 0.36, 0.32, 0.28]
+        case "walk": [0.10, 0.12, 0.10, 0.12, 0.10, 0.12, 0.10, 0.12]
+        case "cook": [0.15, 0.12, 0.11, 0.14, 0.15, 0.12, 0.11, 0.14]
+        case "carry": [0.12, 0.12, 0.16, 0.12, 0.12, 0.16, 0.12, 0.12]
+        case "celebrate": [0.12, 0.10, 0.10, 0.16, 0.12, 0.10, 0.10, 0.16]
+        default: [0.35, 0.30, 0.35, 0.30]
+        }
+        let cycle = durations.reduce(0, +)
+        var time = max(0, elapsed).truncatingRemainder(dividingBy: cycle)
+        for (index, duration) in durations.enumerated() {
+            if time < duration { return index }
+            time -= duration
+        }
+        return durations.count - 1
+    }
+
+    private func drawAnimatedSprite(state: String, frame: Int, now: Date, x: CGFloat, y: CGFloat) {
+        let transitionDuration = 0.16
+        let blend = min(1, max(0, now.timeIntervalSince(transitionStarted) / transitionDuration))
+        if blend < 1 && previousSpriteState != state {
+            drawSprite(state: previousSpriteState, frame: previousSpriteFrame,
+                       x: x, y: y, opacity: CGFloat(1 - blend))
+        }
+        drawSprite(state: state, frame: frame, x: x, y: y, opacity: CGFloat(blend))
+    }
+
+    private func drawSprite(state: String, frame: Int, x: CGFloat, y: CGFloat, opacity: CGFloat = 1) {
         // Look up a complete animation sequence, falling back to the older
         // two-frame sprites until the matching art is installed.
         let candidates = [
@@ -129,7 +162,7 @@ final class ChefCatView: NSView {
         guard let image = selected else { return }
         NSGraphicsContext.current?.imageInterpolation = .none
         let target = NSRect(x: x, y: y, width: 118, height: 118)
-        image.draw(in: target, from: .zero, operation: .sourceOver, fraction: 1)
+        image.draw(in: target, from: .zero, operation: .sourceOver, fraction: opacity)
     }
 
     private func drawStove(time: Double, active: Bool) {
